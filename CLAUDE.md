@@ -1,4 +1,87 @@
 Use context7 often to ensure optimal use of tooling.
+
+# TBFF — Project Context for AI Assistants
+
+## Architecture
+
+**Monorepo** with two packages mirroring the same math:
+
+- `contracts/` — Foundry project. Pure Solidity library (`TBFFMath.sol`). No state, no storage, no side effects.
+- `web/` — Next.js 14 App Router. TypeScript engine (`engine.ts`) mirrors the Solidity exactly. shadcn/ui components.
+
+**Engine Mirror Pattern**: Solidity and TypeScript implementations must produce identical outputs for identical inputs. Cross-validation tests enforce this. Any change to the equation in one must be reflected in the other.
+
+## Core Equation
+
+```
+x^(k+1) = min(x^(k), t) + P^T · max(0, x^(k) - t)
+```
+
+- `x` = balance vector
+- `t` = threshold vector (maxThreshold per participant)
+- `P` = allocation matrix (sparse, weights sum to 1.0 per row)
+
+## Conventions
+
+- **Solidity**: WAD (1e18) fixed-point. `uint96` weights pack with `address` into one slot.
+- **TypeScript**: `float64` (JS `number`). Dollar amounts directly.
+- **Epsilon**: 1e-10 in TypeScript, exact match in Solidity (0 tolerance).
+- **Cross-validation tolerance**: $0.01 per node.
+- **CSR format**: Allocation graph uses Compressed Sparse Row in Solidity (`allocOffsets`, `allocTargets`, `allocWeights`).
+
+## Key Types
+
+```typescript
+// web/src/lib/tbff/engine.ts
+interface Allocation { target: string; weight: number; }  // 0-1
+interface Participant { id, name, emoji, role, balance, minThreshold, maxThreshold, allocations[] }
+interface IterationSnapshot { iteration, balances, overflows, transfers, changed }
+interface ConvergenceResult { finalBalances, iterations, converged, snapshots, totalRedistributed }
+```
+
+## Real Participants
+
+5 Mycopunks members with $8K global max threshold. Demo target: Funding the Commons, mid-March 2026.
+
+| ID | Name | Role |
+|----|------|------|
+| shawn | Shawn | AI Infrastructure |
+| jeff | Jeff | Protocol Engineering |
+| darren | Darren | GPU Engineering |
+| simon | Simon | Systems Design |
+| christina | Christina | Network Facilitation |
+
+## File Map
+
+| File | Description |
+|------|-------------|
+| `contracts/src/libraries/TBFFMath.sol` | Pure Solidity math library (capToThreshold, computeOverflow, distributeOverflow, iterateOnce, converge) |
+| `contracts/test/unit/TBFFMath.t.sol` | 14 unit + fuzz tests for math library |
+| `contracts/test/unit/TBFFGas.t.sol` | Gas snapshot tests (5/10/20/50 nodes) |
+| `contracts/test/helpers/TestSetup.sol` | Shared test setup (builds NetworkState from configs) |
+| `web/src/lib/tbff/engine.ts` | TypeScript mirror of TBFFMath.sol |
+| `web/src/lib/tbff/mock-data.ts` | 5 real participants with cross-allocations |
+| `web/src/lib/tbff/allocation-utils.ts` | normalizeWeights, validateAllocations |
+| `web/src/lib/tbff/__tests__/engine.test.ts` | 12 engine unit + integration tests |
+| `web/src/lib/tbff/__tests__/cross-validation.test.ts` | TypeScript vs Solidity output matching |
+| `web/src/lib/tbff/__tests__/allocation-editor.test.ts` | Allocation utility + engine integration tests |
+| `web/src/app/simulator/page.tsx` | Main simulator page with step-through controls |
+| `web/src/components/NetworkGraph.tsx` | SVG network visualization (circle layout) |
+| `web/src/components/DataTable.tsx` | Balance history table with conservation check |
+| `web/src/components/AllocationEditor.tsx` | Interactive weight editing with normalization |
+
+## Commands
+
+```bash
+# Contracts
+cd contracts && ~/.foundry/bin/forge test -v         # All tests
+cd contracts && ~/.foundry/bin/forge test --gas-report # Gas
+
+# Web
+cd web && npm run test    # Vitest
+cd web && npm run dev     # Dev server
+cd web && npm run build   # Production build
+```
 <claude-mem-context>
 # Recent Activity
 
