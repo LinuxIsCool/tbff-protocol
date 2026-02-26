@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import NetworkGraph from "@/components/NetworkGraph";
 import DataTable from "@/components/DataTable";
+import AllocationEditor from "@/components/AllocationEditor";
 import {
   converge,
   iterateOnce,
   type Participant,
+  type Allocation,
   type IterationSnapshot,
 } from "@/lib/tbff/engine";
 import { mockParticipants } from "@/lib/tbff/mock-data";
@@ -136,6 +138,16 @@ export default function SimulatorPage() {
     [resetSimulationState]
   );
 
+  const handleAllocationChange = useCallback(
+    (id: string, allocations: Allocation[]) => {
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, allocations } : p))
+      );
+      resetSimulationState();
+    },
+    [resetSimulationState]
+  );
+
   const totalFunding = participants.reduce((s, p) => s + p.balance, 0);
 
   return (
@@ -219,12 +231,12 @@ export default function SimulatorPage() {
                     />
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Min: ${p.minThreshold.toLocaleString()} | Allocations:{" "}
-                  {p.allocations
-                    .map((a) => `${a.target} ${Math.round(a.weight * 100)}%`)
-                    .join(", ")}
-                </div>
+                <AllocationEditor
+                  participant={p}
+                  allParticipants={participants}
+                  onAllocationsChange={(allocs) => handleAllocationChange(p.id, allocs)}
+                  disabled={snapshots.length > 0}
+                />
               </div>
             ))}
           </CardContent>
