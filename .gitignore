@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+web/node_modules/
+
+# Build outputs
+web/.next/
+web/out/
+contracts/out/
+contracts/cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Foundry
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+
+# Testing
+coverage/
+web/coverage/
+
+# Claude session logs
+.claude/local/logging/
+**/local/logging/
+
+# Misc
+*.log
