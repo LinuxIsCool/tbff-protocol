@@ -73,3 +73,35 @@ Decisions made during Phase 1 build, backfilled from the Mycopunks transcript an
 **Decision**: All 5 participants start with identical $3,000 minimum and $8,000 maximum thresholds.
 
 **Why**: Simplifies the Phase 1 demo. Equal thresholds make the overflow math visually obvious. The min threshold is display-only in Phase 1 (the equation only uses max). Real threshold differentiation comes when the self-service UI allows editing in Phase 2+.
+
+---
+
+## 10. Single TBFFNetwork Contract (Not Per-Node Super Apps)
+
+**Decision**: Use a single `TBFFNetwork` contract that manages all participants, rather than deploying a Super App per node.
+
+**Why**: Per-node Super Apps would require each to implement `afterAgreementCreated`/`Updated`/`Terminated` callbacks, with complex inter-app coordination for the redistribution logic. A single controller contract is simpler to reason about, cheaper to deploy, and sufficient for the 5-node demo. The trade-off is that `settle()` is called externally rather than being trigger-reactive — acceptable for a demo where we control the trigger.
+
+---
+
+## 11. Fork-Based Testing (Not Local Framework Deployment)
+
+**Decision**: Integration tests fork Base Sepolia rather than deploying the full Superfluid framework locally.
+
+**Why**: Superfluid's local deployment requires ERC1820, Host, CFA, SuperTokenFactory, and governance contracts — hundreds of lines of setup code that's fragile across SDK versions. Forking Base Sepolia gives us real, battle-tested contracts with zero deployment code. Tests run against the same contracts the demo will use. Trade-off: requires an RPC URL and is slower than pure local tests.
+
+---
+
+## 12. Minimal Interfaces (Not Full Superfluid Monorepo)
+
+**Decision**: Define only the function signatures we actually call (`ISuperToken`, `ICFAv1Forwarder`) rather than importing the full `@superfluid-finance/ethereum-contracts` package.
+
+**Why**: The Superfluid monorepo is large, has complex build requirements, and version-pins Solidity. We only need ~10 function signatures total. Minimal interfaces keep compilation fast, avoid dependency conflicts, and make the contract's external surface explicit.
+
+---
+
+## 13. Operator Pattern (Participants Keep Custody)
+
+**Decision**: Each participant holds their own TBFFx tokens. The TBFFNetwork contract acts as a CFA operator — participants grant it permission to create/update/delete streams on their behalf.
+
+**Why**: Participants never transfer custody to the contract. They can revoke permissions at any time. This matches the self-sovereign ethos from the Mycopunks transcript. The network contract is a coordinator, not a custodian. For the demo, `GrantPermissions.s.sol` handles the setup.

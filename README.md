@@ -17,20 +17,26 @@ In plain English: **cap each participant's balance at their threshold, then dist
 | Phase | Description | Status |
 |-------|-------------|--------|
 | Phase 1 | Pure math library + browser simulator | Complete |
-| Phase 2 | Superfluid V2.5 streaming integration | Spec'd |
+| Phase 2 | On-chain proof with Superfluid streams | Complete |
 
 ## Architecture
 
 ```
 tbff2/
-├── contracts/          # Foundry — Solidity math library (TBFFMath.sol)
-│   ├── src/libraries/  # Pure library: capToThreshold, computeOverflow, distributeOverflow, iterateOnce, converge
-│   └── test/           # 22 unit + fuzz + gas tests
-├── web/                # Next.js 14 — TypeScript simulator
-│   ├── src/lib/tbff/   # Engine (TypeScript mirror of TBFFMath.sol) + mock data
-│   ├── src/components/ # NetworkGraph (SVG), DataTable, AllocationEditor
-│   └── src/app/        # Simulator page with step-through controls
-└── .claude/local/      # Research, specs, transcripts
+├── contracts/              # Foundry — Solidity
+│   ├── src/libraries/      # TBFFMath.sol — pure math library
+│   ├── src/TBFFNetwork.sol # On-chain redistribution via Superfluid streams
+│   ├── src/interfaces/     # Minimal ISuperToken, ICFAv1Forwarder
+│   ├── src/mocks/          # Mock contracts for unit tests
+│   ├── test/unit/          # 39 unit + fuzz + gas tests
+│   ├── test/integration/   # Fork-based tests against Base Sepolia
+│   └── script/             # Deploy + permissions scripts
+├── web/                    # Next.js 14 — TypeScript
+│   ├── src/lib/tbff/       # Engine, ABIs, chain bridge, mock data
+│   ├── src/lib/hooks/      # useTBFFNetwork, useAnimatedBalances, etc.
+│   ├── src/components/     # NetworkGraph, DataTable, AllocationEditor
+│   └── src/app/            # /simulator (Phase 1) + /live (Phase 2)
+└── .claude/local/          # Research, specs, transcripts
 ```
 
 The **engine mirror pattern** keeps Solidity and TypeScript implementations in lockstep. Cross-validation tests verify both produce identical outputs for the same inputs.
@@ -41,19 +47,31 @@ The **engine mirror pattern** keeps Solidity and TypeScript implementations in l
 
 ```bash
 cd contracts
-~/.foundry/bin/forge test -v          # Run all 22 tests
-~/.foundry/bin/forge test --gas-report # Gas benchmarks
+make test-unit             # Unit tests (TBFFMath + TBFFNetwork)
+make test-fork             # Fork tests against Base Sepolia (needs .env)
+make deploy-anvil          # Deploy to local Anvil
+~/.foundry/bin/forge test --gas-report  # Gas benchmarks
 ```
 
-### Web Simulator (Next.js)
+### Web (Next.js)
 
 ```bash
 cd web
 npm install
-npm run test    # Vitest — engine + cross-validation tests
-npm run dev     # http://localhost:3000/simulator
+npm run test    # Vitest — 32 engine + cross-validation tests
+npm run dev     # http://localhost:3000/simulator (offline)
+                # http://localhost:3000/live (on-chain)
 npm run build   # Production build
 ```
+
+### Live Demo (Base Sepolia)
+
+1. Copy `.env.example` to `.env` and fill in values
+2. Deploy: `cd contracts && make deploy-sepolia`
+3. Grant permissions: run `GrantPermissions.s.sol` for each member
+4. Set web env vars: `NEXT_PUBLIC_TBFF_NETWORK_ADDRESS`, `NEXT_PUBLIC_SUPER_TOKEN_ADDRESS`
+5. Start dev server: `cd web && npm run dev`
+6. Open `/live`, connect wallet, click "Trigger Redistribution"
 
 ## The Team
 
