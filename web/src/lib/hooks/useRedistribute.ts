@@ -2,7 +2,7 @@
 
 import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { tbffNetworkAbi } from "@/lib/tbff/abis/TBFFNetwork";
-import { TBFF_NETWORK_ADDRESS } from "@/lib/tbff/live-config";
+import { TBFF_NETWORK_ADDRESS, TARGET_CHAIN_ID } from "@/lib/tbff/live-config";
 
 export function useRedistribute() {
   const {
@@ -23,6 +23,7 @@ export function useRedistribute() {
       address: TBFF_NETWORK_ADDRESS,
       abi: tbffNetworkAbi,
       functionName: "settle",
+      chainId: TARGET_CHAIN_ID,
     });
   }
 

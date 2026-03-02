@@ -7,6 +7,7 @@ import {
   CFA_FORWARDER_ADDRESS,
   SUPER_TOKEN_ADDRESS,
   TBFF_NETWORK_ADDRESS,
+  TARGET_CHAIN_ID,
 } from "@/lib/tbff/live-config";
 import type { Address } from "viem";
 import { useReadContracts } from "wagmi";
@@ -22,6 +23,7 @@ export function useSuperfluidStreams() {
     address: TBFF_NETWORK_ADDRESS,
     abi: tbffNetworkAbi,
     functionName: "getActiveStreams",
+    chainId: TARGET_CHAIN_ID,
     query: { refetchInterval: 30_000 },
   });
 
@@ -42,6 +44,7 @@ export function useAccountFlowInfo(nodes: Address[] | undefined) {
     abi: cfaV1ForwarderAbi,
     functionName: "getAccountFlowInfo" as const,
     args: [SUPER_TOKEN_ADDRESS, node] as const,
+    chainId: TARGET_CHAIN_ID,
   }));
 
   const { data, isLoading } = useReadContracts({

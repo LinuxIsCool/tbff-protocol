@@ -37,32 +37,32 @@ export interface ParticipantMetadata {
  * Updated after deployment with real addresses.
  */
 export const PARTICIPANT_METADATA: Record<string, ParticipantMetadata> = {
-  // Placeholder addresses — replace with actual deployment addresses
-  "0x0000000000000000000000000000000000000001": {
+  // Anvil accounts (default mnemonic, accounts 1-5)
+  "0x70997970c51812dc3a010c7d01b50e0d17dc79c8": {
     id: "shawn",
     name: "Shawn",
     emoji: "\u{1F332}",
     role: "AI Infrastructure",
   },
-  "0x0000000000000000000000000000000000000002": {
+  "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc": {
     id: "jeff",
     name: "Jeff",
     emoji: "\u{1F527}",
     role: "Protocol Engineering",
   },
-  "0x0000000000000000000000000000000000000003": {
+  "0x90f79bf6eb2c4f870365e785982e1f101e93b906": {
     id: "darren",
     name: "Darren",
     emoji: "\u{26A1}",
     role: "GPU Engineering",
   },
-  "0x0000000000000000000000000000000000000004": {
+  "0x15d34aaf54267db7d7c367839aaf71a00a2c6a65": {
     id: "simon",
     name: "Simon",
     emoji: "\u{1F3D7}\u{FE0F}",
     role: "Systems Design",
   },
-  "0x0000000000000000000000000000000000000005": {
+  "0x9965507d1a55bcc2695c58ba16fb37d819b0a4dc": {
     id: "christina",
     name: "Christina",
     emoji: "\u{1F310}",

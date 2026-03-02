@@ -6,9 +6,17 @@ Threshold-Based Flow Funding addresses sustainable funding in decentralized netw
 
 ## Core Equation
 
-```
-x^(k+1) = min(x^(k), t) + P^T · max(0, x^(k) - t)
-```
+$$\mathbf{x}^{(k+1)} = \min\!\bigl(\mathbf{x}^{(k)},\; \mathbf{t}\bigr) \;+\; \mathbf{P}^{\!\top} \cdot \max\!\bigl(\mathbf{0},\; \mathbf{x}^{(k)} - \mathbf{t}\bigr)$$
+
+| Symbol | Type | Meaning |
+|--------|------|---------|
+| $\mathbf{x}^{(k)}$ | vector $\in \mathbb{R}^n$ | Balance of each participant at iteration $k$ |
+| $\mathbf{t}$ | vector $\in \mathbb{R}^n$ | Maximum threshold per participant (the "lake level") |
+| $\mathbf{P}$ | matrix $\in \mathbb{R}^{n \times n}$ | Allocation matrix — row $i$ encodes how node $i$'s overflow is split among recipients (rows sum to 1) |
+| $\mathbf{P}^{\!\top}$ | matrix $\in \mathbb{R}^{n \times n}$ | Transpose of $\mathbf{P}$ — columns become rows so overflow *arrives at* recipients |
+| $\min(\mathbf{x}, \mathbf{t})$ | vector | Element-wise minimum: cap each balance at its threshold |
+| $\max(\mathbf{0}, \mathbf{x} - \mathbf{t})$ | vector | Element-wise overflow: how much each balance exceeds its threshold (zero if below) |
+| $k$ | scalar | Iteration counter — the equation is applied repeatedly until convergence |
 
 In plain English: **cap each participant's balance at their threshold, then distribute the overflow to their chosen recipients according to weighted preferences.** Repeat until no one is above threshold. Conservation of funds is guaranteed when all allocation weights sum to 1.0.
 

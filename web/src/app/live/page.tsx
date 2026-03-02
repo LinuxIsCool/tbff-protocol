@@ -20,6 +20,7 @@ import {
 import {
   BASE_SEPOLIA_CHAIN_ID,
   HARDHAT_CHAIN_ID,
+  TARGET_CHAIN_ID,
   TBFF_NETWORK_ADDRESS,
   SUPER_TOKEN_ADDRESS,
 } from "@/lib/tbff/live-config";
@@ -53,6 +54,9 @@ function formatTimestamp(ts: bigint | undefined): string {
 
 export default function LivePage() {
   const { isConnected } = useAccount();
+  const chainId = useChainId();
+  const { switchChain } = useSwitchChain();
+  const isCorrectChain = chainId === TARGET_CHAIN_ID;
   const { nodes, balances, thresholds, lastSettle, isLoading, isError, refetch } =
     useTBFFNetwork();
   const { streams } = useSuperfluidStreams();
@@ -132,17 +136,27 @@ export default function LivePage() {
                 <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
                   Network
                 </CardTitle>
-                <Button
-                  size="sm"
-                  onClick={trigger}
-                  disabled={isPending || isConfirming}
-                >
-                  {isPending
-                    ? "Signing..."
-                    : isConfirming
-                    ? "Confirming..."
-                    : "Trigger Redistribution"}
-                </Button>
+                {isCorrectChain ? (
+                  <Button
+                    size="sm"
+                    onClick={trigger}
+                    disabled={isPending || isConfirming}
+                  >
+                    {isPending
+                      ? "Signing..."
+                      : isConfirming
+                      ? "Confirming..."
+                      : "Trigger Redistribution"}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => switchChain?.({ chainId: TARGET_CHAIN_ID })}
+                  >
+                    Switch Network to Settle
+                  </Button>
+                )}
               </div>
             </CardHeader>
             <CardContent>

@@ -2,12 +2,13 @@
 
 import { useReadContract, useReadContracts } from "wagmi";
 import { tbffNetworkAbi } from "@/lib/tbff/abis/TBFFNetwork";
-import { TBFF_NETWORK_ADDRESS } from "@/lib/tbff/live-config";
+import { TBFF_NETWORK_ADDRESS, TARGET_CHAIN_ID } from "@/lib/tbff/live-config";
 import type { Address } from "viem";
 
 const networkContract = {
   address: TBFF_NETWORK_ADDRESS,
   abi: tbffNetworkAbi,
+  chainId: TARGET_CHAIN_ID,
 } as const;
 
 export function useTBFFNetwork() {
