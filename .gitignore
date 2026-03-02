@@ -36,5 +36,8 @@ web/coverage/
 .claude/local/logging/
 **/local/logging/
 
+# Worktrees
+.worktrees/
+
 # Misc
 *.log
