@@ -355,4 +355,233 @@ contract TBFFNetworkUnitTest is Test {
         assertEq(balances[4], 10000 * WAD);
         assertEq(thresh[0], THRESHOLD);
     }
+
+    // ─── Phase 3 Tests ─────────────────────────────────────────
+
+    address public alice = address(0xA11CE);
+    address public bob = address(0xB0B);
+
+    function test_selfRegister() public {
+        // Fund the network reserve for seed
+        token.setBalance(address(network), 1000 * WAD);
+
+        vm.prank(alice);
+        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Developer");
+
+        assertTrue(network.isNode(alice));
+        assertEq(network.getNodeCount(), 1);
+        assertEq(network.nodeIndex(alice), 0);
+        assertEq(network.thresholds(0), 5000 * WAD);
+
+        // Profile stored
+        (string memory name, string memory emoji, string memory role) = network.getProfile(alice);
+        assertEq(name, "Alice");
+        assertEq(emoji, unicode"🌿");
+        assertEq(role, "Developer");
+
+        // Seed transferred
+        assertEq(token.balanceOf(alice), 100 * WAD);
+
+        // CSR extended: allocOffsets should have 2 entries [0, 0]
+        // Verify by registering a second node and checking count
+        vm.prank(bob);
+        network.selfRegister(3000 * WAD, "Bob", unicode"🔧", "Builder");
+        assertEq(network.getNodeCount(), 2);
+    }
+
+    function test_selfRegister_duplicateReverts() public {
+        vm.prank(alice);
+        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+
+        vm.prank(alice);
+        vm.expectRevert(TBFFNetwork.NodeAlreadyRegistered.selector);
+        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+    }
+
+    function test_selfRegister_thresholdBounds() public {
+        // Below minimum
+        vm.prank(alice);
+        vm.expectRevert(TBFFNetwork.ThresholdOutOfBounds.selector);
+        network.selfRegister(500 * WAD, "Alice", unicode"🌿", "Dev");
+
+        // Above maximum
+        vm.prank(alice);
+        vm.expectRevert(TBFFNetwork.ThresholdOutOfBounds.selector);
+        network.selfRegister(60000 * WAD, "Alice", unicode"🌿", "Dev");
+    }
+
+    function test_selfRegister_stringLength() public {
+        // Empty name
+        vm.prank(alice);
+        vm.expectRevert(TBFFNetwork.StringTooLong.selector);
+        network.selfRegister(5000 * WAD, "", unicode"🌿", "Dev");
+
+        // Name too long (65 bytes)
+        vm.prank(alice);
+        vm.expectRevert(TBFFNetwork.StringTooLong.selector);
+        network.selfRegister(5000 * WAD, "AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFGGGGG", unicode"🌿", "Dev");
+    }
+
+    function test_setMyAllocations_succeeds() public {
+        // Register 3 nodes
+        vm.prank(alice);
+        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        vm.prank(bob);
+        network.selfRegister(5000 * WAD, "Bob", unicode"🔧", "Builder");
+        vm.prank(address(0xCAFE));
+        network.selfRegister(5000 * WAD, "Carol", unicode"⚡", "Ops");
+
+        // Alice sets allocations: Bob(1) 60%, Carol(2) 40%
+        uint256[] memory targets = new uint256[](2);
+        uint96[] memory weights = new uint96[](2);
+        targets[0] = 1; // bob
+        targets[1] = 2; // carol
+        weights[0] = uint96(WAD * 60 / 100);
+        weights[1] = uint96(WAD - uint256(weights[0]));
+
+        vm.prank(alice);
+        network.setMyAllocations(targets, weights);
+
+        // Verify allocations stored
+        (uint256[] memory gotTargets, uint96[] memory gotWeights) = network.getAllocations(0);
+        assertEq(gotTargets.length, 2);
+        assertEq(gotTargets[0], 1);
+        assertEq(gotWeights[0], weights[0]);
+    }
+
+    function test_setMyAllocations_notRegistered() public {
+        uint256[] memory targets = new uint256[](0);
+        uint96[] memory weights = new uint96[](0);
+
+        vm.prank(alice);
+        vm.expectRevert(TBFFNetwork.NodeNotRegistered.selector);
+        network.setMyAllocations(targets, weights);
+    }
+
+    function test_setMyAllocations_selfAlloc() public {
+        vm.prank(alice);
+        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        vm.prank(bob);
+        network.selfRegister(5000 * WAD, "Bob", unicode"🔧", "Builder");
+
+        // Alice tries to allocate to herself (index 0)
+        uint256[] memory targets = new uint256[](1);
+        uint96[] memory weights = new uint96[](1);
+        targets[0] = 0; // alice is index 0
+        weights[0] = uint96(WAD);
+
+        vm.prank(alice);
+        vm.expectRevert(TBFFNetwork.SelfAllocation.selector);
+        network.setMyAllocations(targets, weights);
+    }
+
+    function test_setMyThreshold_succeeds() public {
+        vm.prank(alice);
+        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+
+        vm.prank(alice);
+        network.setMyThreshold(10000 * WAD);
+
+        assertEq(network.thresholds(0), 10000 * WAD);
+    }
+
+    function test_setMyProfile_succeeds() public {
+        vm.prank(alice);
+        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+
+        vm.prank(alice);
+        network.setMyProfile("Alicia", unicode"🌸", "Senior Dev");
+
+        (string memory name, string memory emoji, string memory role) = network.getProfile(alice);
+        assertEq(name, "Alicia");
+        assertEq(emoji, unicode"🌸");
+        assertEq(role, "Senior Dev");
+    }
+
+    function test_rain_distributes() public {
+        _registerAll();
+        address rainMaker = address(0xDA1);
+        token.setBalance(rainMaker, 10000 * WAD);
+
+        vm.prank(rainMaker);
+        token.approve(address(network), 10000 * WAD);
+
+        vm.prank(rainMaker);
+        network.rain(10000 * WAD);
+
+        // Each node should receive 2000 WAD (10000 / 5)
+        assertEq(token.balanceOf(shawn), 2000 * WAD);
+        assertEq(token.balanceOf(jeff), 2000 * WAD);
+        assertEq(token.balanceOf(darren), 2000 * WAD);
+        assertEq(token.balanceOf(simon), 2000 * WAD);
+        assertEq(token.balanceOf(christina), 2000 * WAD);
+    }
+
+    function test_rain_zeroNodes() public {
+        address rainMaker = address(0xDA1);
+        vm.prank(rainMaker);
+        vm.expectRevert(TBFFNetwork.ZeroNodes.selector);
+        network.rain(1000 * WAD);
+    }
+
+    function test_flowThrough_accumulates() public {
+        _registerAll();
+        _setMockDataAllocations();
+
+        // Christina at 10K, threshold 8K → 2K overflow
+        _setBalances(6000 * WAD, 5000 * WAD, 4000 * WAD, 7000 * WAD, 10000 * WAD);
+
+        network.settle();
+
+        // Christina should have flow-through recorded (2000 WAD overflow)
+        assertEq(network.cumulativeFlowThrough(christina), 2000 * WAD);
+
+        // Others below threshold, no flow-through
+        assertEq(network.cumulativeFlowThrough(shawn), 0);
+    }
+
+    function test_getAllProfiles() public {
+        _registerAll();
+
+        // Set profiles for all via admin
+        network.setProfileFor(shawn, "Shawn", unicode"🌲", "AI Infrastructure");
+        network.setProfileFor(jeff, "Jeff", unicode"🔧", "Protocol Engineering");
+
+        (
+            address[] memory addrs,
+            string[] memory names,
+            string[] memory emojis,
+            string[] memory roles
+        ) = network.getAllProfiles();
+
+        assertEq(addrs.length, 5);
+        assertEq(addrs[0], shawn);
+        assertEq(names[0], "Shawn");
+        assertEq(emojis[0], unicode"🌲");
+        assertEq(roles[0], "AI Infrastructure");
+        assertEq(names[1], "Jeff");
+    }
+
+    function test_setProfileFor_admin() public {
+        _registerAll();
+
+        network.setProfileFor(shawn, "Shawn A", unicode"🌲", "AI Infra");
+
+        (string memory name, string memory emoji, string memory role) = network.getProfile(shawn);
+        assertEq(name, "Shawn A");
+        assertEq(emoji, unicode"🌲");
+        assertEq(role, "AI Infra");
+    }
+
+    function testFuzz_selfRegister_threshold(uint256 threshold) public {
+        if (threshold < 1000 * WAD || threshold > 50000 * WAD) {
+            vm.prank(alice);
+            vm.expectRevert(TBFFNetwork.ThresholdOutOfBounds.selector);
+            network.selfRegister(threshold, "Alice", unicode"🌿", "Dev");
+        } else {
+            vm.prank(alice);
+            network.selfRegister(threshold, "Alice", unicode"🌿", "Dev");
+            assertEq(network.thresholds(0), threshold);
+        }
+    }
 }

@@ -39,6 +39,20 @@ contract TBFFNetwork {
     bool public lastSettleConverged;
     uint256 public lastSettleTotalRedistributed;
 
+    // ─── Phase 3 Storage ────────────────────────────────────────
+
+    struct Profile {
+        string name;   // max 64 bytes
+        string emoji;  // max 8 bytes
+        string role;   // max 128 bytes
+    }
+    mapping(address => Profile) public profiles;
+    mapping(address => uint256) public cumulativeFlowThrough; // WAD lifetime total
+
+    uint256 public constant MIN_THRESHOLD = 1_000 * 1e18;  // $1K floor
+    uint256 public constant MAX_THRESHOLD = 50_000 * 1e18; // $50K ceiling
+    uint256 public constant SEED_AMOUNT = 100 * 1e18;      // $100 seed
+
     // ─── Events ──────────────────────────────────────────────────
 
     event NodeRegistered(address indexed node, uint256 maxThreshold);
@@ -49,6 +63,13 @@ contract TBFFNetwork {
     event StreamUpdated(address indexed from, address indexed to, int96 newRate);
     event StreamDeleted(address indexed from, address indexed to);
     event StreamError(address indexed from, address indexed to, bytes reason);
+    event SelfRegistered(address indexed node, uint256 maxThreshold, string name);
+    event ProfileUpdated(address indexed node);
+    event MyAllocationsSet(address indexed node);
+    event MyThresholdSet(address indexed node, uint256 newThreshold);
+    event Rained(address indexed from, uint256 amount, uint256 perNode);
+    event SeedTransferred(address indexed to, uint256 amount);
+    event SeedFailed(address indexed to);
 
     // ─── Errors ──────────────────────────────────────────────────
 
@@ -57,6 +78,10 @@ contract TBFFNetwork {
     error NodeNotRegistered();
     error InvalidWeights();
     error InvalidTargets();
+    error ThresholdOutOfBounds();
+    error StringTooLong();
+    error ZeroNodes();
+    error SelfAllocation();
 
     // ─── Modifiers ───────────────────────────────────────────────
 
@@ -153,6 +178,99 @@ contract TBFFNetwork {
 
     function fundReserve(uint256 amount) external {
         token.transferFrom(msg.sender, address(this), amount);
+    }
+
+    function setProfileFor(address node, string calldata name, string calldata emoji, string calldata role) external onlyOwner {
+        if (!isNode[node]) revert NodeNotRegistered();
+        profiles[node] = Profile({name: name, emoji: emoji, role: role});
+        emit ProfileUpdated(node);
+    }
+
+    // ─── Self-Service Functions ─────────────────────────────────
+
+    function selfRegister(
+        uint256 maxThreshold,
+        string calldata name,
+        string calldata emoji,
+        string calldata role
+    ) external {
+        if (isNode[msg.sender]) revert NodeAlreadyRegistered();
+        if (maxThreshold < MIN_THRESHOLD || maxThreshold > MAX_THRESHOLD) revert ThresholdOutOfBounds();
+        if (bytes(name).length == 0 || bytes(name).length > 64) revert StringTooLong();
+        if (bytes(emoji).length == 0 || bytes(emoji).length > 8) revert StringTooLong();
+        if (bytes(role).length > 128) revert StringTooLong();
+
+        // Core registration (mirrors registerNode lines)
+        nodeIndex[msg.sender] = nodes.length;
+        nodes.push(msg.sender);
+        isNode[msg.sender] = true;
+        thresholds.push(maxThreshold);
+        _allocOffsets.push(_allocOffsets[_allocOffsets.length - 1]); // CSR extension
+
+        profiles[msg.sender] = Profile({name: name, emoji: emoji, role: role});
+
+        // Soft-fail seed
+        if (SEED_AMOUNT > 0 && token.balanceOf(address(this)) >= SEED_AMOUNT) {
+            token.transfer(msg.sender, SEED_AMOUNT);
+            emit SeedTransferred(msg.sender, SEED_AMOUNT);
+        } else {
+            emit SeedFailed(msg.sender);
+        }
+
+        emit SelfRegistered(msg.sender, maxThreshold, name);
+        emit NodeRegistered(msg.sender, maxThreshold);
+    }
+
+    function setMyAllocations(
+        uint256[] calldata targetIndices,
+        uint96[] calldata weights
+    ) external {
+        if (!isNode[msg.sender]) revert NodeNotRegistered();
+        if (targetIndices.length != weights.length) revert InvalidTargets();
+
+        uint256 weightSum;
+        for (uint256 i; i < weights.length;) {
+            if (targetIndices[i] >= nodes.length) revert InvalidTargets();
+            if (nodes[targetIndices[i]] == msg.sender) revert SelfAllocation();
+            weightSum += uint256(weights[i]);
+            unchecked { ++i; }
+        }
+        if (weights.length > 0 && weightSum != WAD) revert InvalidWeights();
+
+        _rebuildCSR(nodeIndex[msg.sender], targetIndices, weights);
+
+        emit MyAllocationsSet(msg.sender);
+    }
+
+    function setMyThreshold(uint256 newThreshold) external {
+        if (!isNode[msg.sender]) revert NodeNotRegistered();
+        if (newThreshold < MIN_THRESHOLD || newThreshold > MAX_THRESHOLD) revert ThresholdOutOfBounds();
+        thresholds[nodeIndex[msg.sender]] = newThreshold;
+        emit MyThresholdSet(msg.sender, newThreshold);
+    }
+
+    function setMyProfile(string calldata name, string calldata emoji, string calldata role) external {
+        if (!isNode[msg.sender]) revert NodeNotRegistered();
+        if (bytes(name).length == 0 || bytes(name).length > 64) revert StringTooLong();
+        if (bytes(emoji).length == 0 || bytes(emoji).length > 8) revert StringTooLong();
+        if (bytes(role).length > 128) revert StringTooLong();
+        profiles[msg.sender] = Profile({name: name, emoji: emoji, role: role});
+        emit ProfileUpdated(msg.sender);
+    }
+
+    function rain(uint256 amount) external {
+        uint256 n = nodes.length;
+        if (n == 0) revert ZeroNodes();
+        token.transferFrom(msg.sender, address(this), amount);
+        uint256 perNode = amount / n;
+        uint256 distributed;
+        for (uint256 i; i < n;) {
+            uint256 nodeAmount = (i == n - 1) ? (amount - distributed) : perNode;
+            token.transfer(nodes[i], nodeAmount);
+            distributed += nodeAmount;
+            unchecked { ++i; }
+        }
+        emit Rained(msg.sender, amount, perNode);
     }
 
     // ─── Core: Settle ────────────────────────────────────────────
@@ -268,6 +386,41 @@ contract TBFFNetwork {
         }
     }
 
+    function getProfile(address node) external view returns (string memory, string memory, string memory) {
+        Profile storage p = profiles[node];
+        return (p.name, p.emoji, p.role);
+    }
+
+    function getAllProfiles() external view returns (
+        address[] memory addrs,
+        string[] memory names,
+        string[] memory emojis,
+        string[] memory roles
+    ) {
+        uint256 n = nodes.length;
+        addrs = nodes;
+        names = new string[](n);
+        emojis = new string[](n);
+        roles = new string[](n);
+        for (uint256 i; i < n;) {
+            Profile storage p = profiles[nodes[i]];
+            names[i] = p.name;
+            emojis[i] = p.emoji;
+            roles[i] = p.role;
+            unchecked { ++i; }
+        }
+    }
+
+    function getFlowThrough() external view returns (address[] memory, uint256[] memory amounts) {
+        uint256 n = nodes.length;
+        amounts = new uint256[](n);
+        for (uint256 i; i < n;) {
+            amounts[i] = cumulativeFlowThrough[nodes[i]];
+            unchecked { ++i; }
+        }
+        return (nodes, amounts);
+    }
+
     // ─── Internal ────────────────────────────────────────────────
 
     function _balancesFromChain() internal view returns (uint256[] memory balances) {
@@ -325,6 +478,9 @@ contract TBFFNetwork {
 
         for (uint256 i; i < n;) {
             uint256 overflow = TBFFMath.computeOverflow(currentBalances[i], thresholds[i]);
+            if (overflow > 0) {
+                cumulativeFlowThrough[nodes[i]] += overflow;
+            }
             uint256 start = _allocOffsets[i];
             uint256 end = _allocOffsets[i + 1];
 

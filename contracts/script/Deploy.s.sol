@@ -100,7 +100,15 @@ contract DeployScript is Script {
         }
         console2.log("Allocations set");
 
-        // 4. Fund Mycopunks with initial TBFFx balances
+        // 4. Set profiles for bootstrapped Mycopunks
+        network.setProfileFor(shawn, "Shawn", unicode"🌲", "AI Infrastructure");
+        network.setProfileFor(jeff, "Jeff", unicode"🔧", "Protocol Engineering");
+        network.setProfileFor(darren, "Darren", unicode"⚡", "GPU Engineering");
+        network.setProfileFor(simon, "Simon", unicode"🏗️", "Systems Design");
+        network.setProfileFor(christina, "Christina", unicode"🌐", "Network Facilitation");
+        console2.log("Profiles set for 5 Mycopunks");
+
+        // 5. Fund Mycopunks with initial TBFFx balances
         ISuperToken superToken = ISuperToken(superTokenAddr);
         superToken.transfer(shawn, 6000 * WAD);
         superToken.transfer(jeff, 5000 * WAD);
@@ -109,8 +117,8 @@ contract DeployScript is Script {
         superToken.transfer(christina, 10000 * WAD);
         console2.log("Funded 5 wallets");
 
-        // 5. Fund network reserve (for stream buffer deposits)
-        uint256 reserveAmount = 50000 * WAD;
+        // 6. Fund network reserve (stream buffer + seed amounts for ~100 registrations)
+        uint256 reserveAmount = 60000 * WAD; // 50K stream buffer + 10K seed reserve
         superToken.transfer(address(network), reserveAmount);
         console2.log("Network reserve funded:", reserveAmount / WAD, "TBFFx");
 

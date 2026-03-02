@@ -1,14 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useAccount, useReadContract } from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import NetworkGraph from "@/components/NetworkGraph";
+import RegistrationFlow from "@/components/RegistrationFlow";
+import ProfileEditor from "@/components/ProfileEditor";
+import LiveAllocationEditor from "@/components/LiveAllocationEditor";
+import FlowThroughDisplay from "@/components/FlowThroughDisplay";
+import RainButton from "@/components/RainButton";
 import { PARTICIPANT_METADATA } from "@/lib/tbff/chain-bridge";
-import { TBFF_NETWORK_ADDRESS, SUPER_TOKEN_ADDRESS } from "@/lib/tbff/live-config";
+import { TBFF_NETWORK_ADDRESS, SUPER_TOKEN_ADDRESS, TARGET_CHAIN_ID } from "@/lib/tbff/live-config";
+import { tbffNetworkAbi } from "@/lib/tbff/abis/TBFFNetwork";
 import type { Participant } from "@/lib/tbff/engine";
+import type { Address } from "viem";
+
+interface ProfileInfo {
+  address: string;
+  name: string;
+  emoji: string;
+  role: string;
+}
 
 interface NetworkData {
   nodes: string[];
@@ -22,6 +38,8 @@ interface NetworkData {
     converged: boolean;
     totalRedistributed: string;
   };
+  profiles: ProfileInfo[];
+  flowThrough: string[];
 }
 
 function formatTimestamp(ts: number): string {
@@ -35,12 +53,46 @@ function flowRateToMonthly(rateStr: string): number {
   return Number(monthly / BigInt(1e12)) / 1e6;
 }
 
+/** Resolve display metadata for an address, preferring on-chain profile */
+function getNodeMeta(addr: string, profiles: ProfileInfo[]) {
+  const profile = profiles.find(
+    (p) => p.address.toLowerCase() === addr.toLowerCase()
+  );
+  if (profile && profile.name) {
+    return {
+      id: profile.address.slice(0, 8).toLowerCase(),
+      name: profile.name,
+      emoji: profile.emoji || "\u{1F7E2}",
+      role: profile.role || "Participant",
+    };
+  }
+  const meta = PARTICIPANT_METADATA[addr.toLowerCase()];
+  return meta ?? {
+    id: addr.slice(0, 8),
+    name: `Node ${addr.slice(0, 6)}`,
+    emoji: "\u{1F7E2}",
+    role: "Participant",
+  };
+}
+
 export default function LivePage() {
   const [data, setData] = useState<NetworkData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [settling, setSettling] = useState(false);
   const [settleResult, setSettleResult] = useState<string | null>(null);
+
+  const { address: walletAddress, isConnected } = useAccount();
+
+  // Check if connected wallet is a registered node
+  const { data: isRegistered } = useReadContract({
+    address: TBFF_NETWORK_ADDRESS,
+    abi: tbffNetworkAbi,
+    functionName: "isNode",
+    args: walletAddress ? [walletAddress] : undefined,
+    chainId: TARGET_CHAIN_ID,
+    query: { enabled: !!walletAddress, refetchInterval: 10_000 },
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -85,27 +137,45 @@ export default function LivePage() {
   // Bridge API data to Participant[] for NetworkGraph
   const participants: Participant[] = [];
   const currentBalances: Record<string, number> = {};
+  const profiles = data?.profiles ?? [];
   if (data) {
     for (let i = 0; i < data.nodes.length; i++) {
-      const addr = data.nodes[i].toLowerCase();
-      const meta = PARTICIPANT_METADATA[addr];
+      const addr = data.nodes[i];
+      const meta = getNodeMeta(addr, profiles);
       const bal = Number(data.balances[i]);
       const thresh = Number(data.thresholds[i]);
-      const id = meta?.id ?? addr.slice(0, 8);
 
       participants.push({
-        id,
-        name: meta?.name ?? `Node ${addr.slice(0, 6)}`,
-        emoji: meta?.emoji ?? "\u{1F7E2}",
-        role: meta?.role ?? "Participant",
+        id: meta.id,
+        name: meta.name,
+        emoji: meta.emoji,
+        role: meta.role,
         balance: bal,
         minThreshold: 3000,
         maxThreshold: thresh,
         allocations: [],
       });
-      currentBalances[id] = bal;
+      currentBalances[meta.id] = bal;
     }
   }
+
+  // Build node info for LiveAllocationEditor
+  const nodeInfos = data
+    ? data.nodes.map((addr, i) => {
+        const meta = getNodeMeta(addr, profiles);
+        return {
+          address: addr as Address,
+          index: i,
+          name: meta.name,
+          emoji: meta.emoji,
+        };
+      })
+    : [];
+
+  // Current user's profile (for ProfileEditor)
+  const myProfile = profiles.find(
+    (p) => p.address.toLowerCase() === walletAddress?.toLowerCase()
+  );
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -114,7 +184,37 @@ export default function LivePage() {
         <h1 className="text-xl font-bold tracking-tight">TBFF Live</h1>
         <Badge variant="secondary">On-Chain</Badge>
         <Badge variant="secondary">Anvil (Local)</Badge>
+
+        <div className="ml-auto flex items-center gap-2">
+          {isConnected && isRegistered && <RainButton />}
+          <ConnectButton showBalance={false} chainStatus="icon" />
+        </div>
       </header>
+
+      {/* Wallet action bar */}
+      {isConnected && (
+        <div className="px-6 py-2 border-b flex items-center gap-2 bg-muted/30">
+          {isRegistered ? (
+            <>
+              <Badge variant="outline" className="text-xs">Registered</Badge>
+              <ProfileEditor
+                currentName={myProfile?.name ?? ""}
+                currentEmoji={myProfile?.emoji ?? "\u{1F33F}"}
+                currentRole={myProfile?.role ?? ""}
+              />
+              <LiveAllocationEditor
+                myAddress={walletAddress!}
+                allNodes={nodeInfos}
+              />
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-muted-foreground">Not yet registered</span>
+              <RegistrationFlow />
+            </>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center h-[60vh] text-muted-foreground">
@@ -171,16 +271,16 @@ export default function LivePage() {
                     Active Streams
                   </p>
                   {data.streams.map((s, i) => {
-                    const fromMeta = PARTICIPANT_METADATA[s.from.toLowerCase()];
-                    const toMeta = PARTICIPANT_METADATA[s.to.toLowerCase()];
+                    const fromMeta = getNodeMeta(s.from, profiles);
+                    const toMeta = getNodeMeta(s.to, profiles);
                     return (
                       <div key={i} className="flex items-center gap-2 text-xs">
                         <span>
-                          {fromMeta?.emoji ?? "?"} {fromMeta?.name ?? s.from.slice(0, 6)}
+                          {fromMeta.emoji} {fromMeta.name}
                         </span>
                         <span className="text-muted-foreground">&rarr;</span>
                         <span>
-                          {toMeta?.emoji ?? "?"} {toMeta?.name ?? s.to.slice(0, 6)}
+                          {toMeta.emoji} {toMeta.name}
                         </span>
                         <Badge variant="outline" className="text-[10px] ml-auto">
                           ${flowRateToMonthly(s.rate).toFixed(0)}/mo
@@ -213,16 +313,24 @@ export default function LivePage() {
                   </thead>
                   <tbody>
                     {data?.nodes.map((addr, i) => {
-                      const meta = PARTICIPANT_METADATA[addr.toLowerCase()];
+                      const meta = getNodeMeta(addr, profiles);
                       const bal = Number(data.balances[i]);
                       const thresh = Number(data.thresholds[i]);
+                      const flow = Number(data.flowThrough?.[i] ?? 0);
                       const isOverflowing = bal > thresh;
 
                       return (
                         <tr key={addr} className="border-b border-border/50">
                           <td className="py-2">
-                            <span className="mr-1">{meta?.emoji ?? "\u{1F7E2}"}</span>
-                            {meta?.name ?? addr.slice(0, 8)}
+                            <div>
+                              <span className="mr-1">{meta.emoji}</span>
+                              {meta.name}
+                            </div>
+                            <FlowThroughDisplay
+                              flowThrough={flow}
+                              balance={bal}
+                              threshold={thresh}
+                            />
                           </td>
                           <td className="py-2 text-right font-mono tabular-nums">
                             ${Math.round(bal).toLocaleString()}
@@ -287,7 +395,7 @@ export default function LivePage() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Iterations</span>
-                    <span>{data?.lastSettle.iterations ?? "—"}</span>
+                    <span>{data?.lastSettle.iterations ?? "\u{2014}"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Converged</span>
@@ -298,7 +406,7 @@ export default function LivePage() {
                     <span>
                       {Number(data?.lastSettle.totalRedistributed ?? 0) > 0
                         ? `$${Math.round(Number(data?.lastSettle.totalRedistributed)).toLocaleString()}`
-                        : "—"}
+                        : "\u{2014}"}
                     </span>
                   </div>
                 </div>
@@ -325,7 +433,7 @@ export default function LivePage() {
                         ? Math.round(
                             data.balances.reduce((sum, b) => sum + Number(b), 0)
                           ).toLocaleString()
-                        : "—"}
+                        : "\u{2014}"}
                     </span>
                   </div>
                 </div>

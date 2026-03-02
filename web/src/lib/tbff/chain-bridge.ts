@@ -71,6 +71,16 @@ export const PARTICIPANT_METADATA: Record<string, ParticipantMetadata> = {
 };
 
 /**
+ * On-chain profile data from getAllProfiles().
+ */
+export interface OnChainProfile {
+  address: Address;
+  name: string;
+  emoji: string;
+  role: string;
+}
+
+/**
  * Bridge on-chain node data to engine Participant type.
  * Uses metadata lookup for human-readable identity.
  */
@@ -110,5 +120,34 @@ export function bridgeToParticipant(
     minThreshold: 3000,
     maxThreshold: wadToUsd(threshold),
     allocations,
+  };
+}
+
+/**
+ * Bridge on-chain profile data to Participant type.
+ * Prefers on-chain profile over static PARTICIPANT_METADATA.
+ */
+export function profileToParticipant(
+  profile: OnChainProfile,
+  balance: bigint,
+  threshold: bigint,
+): Participant {
+  const hasProfile = profile.name.length > 0;
+  const fallback = PARTICIPANT_METADATA[profile.address.toLowerCase()];
+
+  const name = hasProfile ? profile.name : (fallback?.name ?? `Node ${profile.address.slice(0, 6)}`);
+  const emoji = hasProfile ? profile.emoji : (fallback?.emoji ?? "\u{1F7E2}");
+  const role = hasProfile ? profile.role : (fallback?.role ?? "Participant");
+  const id = fallback?.id ?? profile.address.slice(0, 8).toLowerCase();
+
+  return {
+    id,
+    name,
+    emoji,
+    role,
+    balance: wadToUsd(balance),
+    minThreshold: 3000,
+    maxThreshold: wadToUsd(threshold),
+    allocations: [],
   };
 }
