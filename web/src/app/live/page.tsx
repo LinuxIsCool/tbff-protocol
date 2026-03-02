@@ -1,91 +1,109 @@
 "use client";
 
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import NetworkGraph from "@/components/NetworkGraph";
-import { useTBFFNetwork } from "@/lib/hooks/useTBFFNetwork";
-import { useSuperfluidStreams, useAccountFlowInfo } from "@/lib/hooks/useSuperfluidStreams";
-import { useAnimatedBalances } from "@/lib/hooks/useAnimatedBalances";
-import { useRedistribute } from "@/lib/hooks/useRedistribute";
-import {
-  wadToUsd,
-  flowRateToMonthly,
-  bridgeToParticipant,
-  PARTICIPANT_METADATA,
-} from "@/lib/tbff/chain-bridge";
-import {
-  BASE_SEPOLIA_CHAIN_ID,
-  HARDHAT_CHAIN_ID,
-  TARGET_CHAIN_ID,
-  TBFF_NETWORK_ADDRESS,
-  SUPER_TOKEN_ADDRESS,
-} from "@/lib/tbff/live-config";
+import { PARTICIPANT_METADATA } from "@/lib/tbff/chain-bridge";
+import { TBFF_NETWORK_ADDRESS, SUPER_TOKEN_ADDRESS } from "@/lib/tbff/live-config";
 import type { Participant } from "@/lib/tbff/engine";
 
-function ChainBadge() {
-  const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
-
-  if (chainId === BASE_SEPOLIA_CHAIN_ID) {
-    return <Badge variant="secondary">Base Sepolia</Badge>;
-  }
-  if (chainId === HARDHAT_CHAIN_ID) {
-    return <Badge variant="secondary">Anvil (Local)</Badge>;
-  }
-  return (
-    <Badge
-      variant="destructive"
-      className="cursor-pointer"
-      onClick={() => switchChain?.({ chainId: BASE_SEPOLIA_CHAIN_ID })}
-    >
-      Wrong Network — Click to Switch
-    </Badge>
-  );
+interface NetworkData {
+  nodes: string[];
+  balances: string[];
+  thresholds: string[];
+  nodeCount: number;
+  streams: { from: string; to: string; rate: string }[];
+  lastSettle: {
+    timestamp: number;
+    iterations: number;
+    converged: boolean;
+    totalRedistributed: string;
+  };
 }
 
-function formatTimestamp(ts: bigint | undefined): string {
-  if (!ts || ts === 0n) return "Never";
-  return new Date(Number(ts) * 1000).toLocaleString();
+function formatTimestamp(ts: number): string {
+  if (!ts) return "Never";
+  return new Date(ts * 1000).toLocaleString();
+}
+
+function flowRateToMonthly(rateStr: string): number {
+  const rate = BigInt(rateStr);
+  const monthly = rate * 30n * 24n * 60n * 60n;
+  return Number(monthly / BigInt(1e12)) / 1e6;
 }
 
 export default function LivePage() {
-  const { isConnected } = useAccount();
-  const chainId = useChainId();
-  const { switchChain } = useSwitchChain();
-  const isCorrectChain = chainId === TARGET_CHAIN_ID;
-  const { nodes, balances, thresholds, lastSettle, isLoading, isError, refetch } =
-    useTBFFNetwork();
-  const { streams } = useSuperfluidStreams();
-  const { flowInfo } = useAccountFlowInfo(nodes);
-  const animatedBalances = useAnimatedBalances({
-    nodes,
-    balances,
-    flowInfo,
-  });
-  const { trigger, isPending, isConfirming, isSuccess, error } = useRedistribute();
+  const [data, setData] = useState<NetworkData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isError, setIsError] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const [settleResult, setSettleResult] = useState<string | null>(null);
 
-  // Bridge on-chain data to Participant[] for NetworkGraph
-  const participants: Participant[] = [];
-  if (nodes && balances && thresholds) {
-    for (let i = 0; i < nodes.length; i++) {
-      participants.push(
-        bridgeToParticipant(nodes[i], balances[i], thresholds[i], nodes)
-      );
+  const fetchData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/network");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setData(json);
+      setIsError(false);
+    } catch {
+      setIsError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 10_000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
+
+  async function handleSettle() {
+    setSettling(true);
+    setSettleResult(null);
+    try {
+      const res = await fetch("/api/settle", { method: "POST" });
+      const json = await res.json();
+      if (json.error) {
+        setSettleResult(`Error: ${json.error.slice(0, 120)}`);
+      } else {
+        setSettleResult(`Redistribution confirmed! Block #${json.blockNumber}`);
+        fetchData();
+      }
+    } catch (e: unknown) {
+      setSettleResult(`Error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSettling(false);
     }
   }
 
-  // Build currentBalances keyed by participant ID for NetworkGraph
+  // Bridge API data to Participant[] for NetworkGraph
+  const participants: Participant[] = [];
   const currentBalances: Record<string, number> = {};
-  if (nodes) {
-    for (let i = 0; i < nodes.length; i++) {
-      const addr = nodes[i].toLowerCase();
+  if (data) {
+    for (let i = 0; i < data.nodes.length; i++) {
+      const addr = data.nodes[i].toLowerCase();
       const meta = PARTICIPANT_METADATA[addr];
+      const bal = Number(data.balances[i]);
+      const thresh = Number(data.thresholds[i]);
       const id = meta?.id ?? addr.slice(0, 8);
-      currentBalances[id] = animatedBalances[addr] ?? wadToUsd(balances?.[i] ?? 0n);
+
+      participants.push({
+        id,
+        name: meta?.name ?? `Node ${addr.slice(0, 6)}`,
+        emoji: meta?.emoji ?? "\u{1F7E2}",
+        role: meta?.role ?? "Participant",
+        balance: bal,
+        minThreshold: 3000,
+        maxThreshold: thresh,
+        allocations: [],
+      });
+      currentBalances[id] = bal;
     }
   }
 
@@ -95,23 +113,12 @@ export default function LivePage() {
       <header className="border-b px-6 py-3 flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold tracking-tight">TBFF Live</h1>
         <Badge variant="secondary">On-Chain</Badge>
-        <ChainBadge />
-        <div className="ml-auto">
-          <ConnectButton showBalance={false} />
-        </div>
+        <Badge variant="secondary">Anvil (Local)</Badge>
       </header>
 
-      {!isConnected ? (
-        <div className="flex items-center justify-center h-[60vh]">
-          <Card className="max-w-md">
-            <CardContent className="pt-6 text-center space-y-4">
-              <p className="text-lg font-medium">Connect your wallet to view the live TBFF network</p>
-              <p className="text-sm text-muted-foreground">
-                The live page reads on-chain balances and Superfluid streams in real-time.
-              </p>
-              <ConnectButton />
-            </CardContent>
-          </Card>
+      {isLoading ? (
+        <div className="flex items-center justify-center h-[60vh] text-muted-foreground">
+          Loading network data...
         </div>
       ) : isError ? (
         <div className="p-6">
@@ -119,9 +126,9 @@ export default function LivePage() {
             <CardContent className="pt-6 text-center space-y-4">
               <p className="text-destructive font-medium">Failed to read contract data</p>
               <p className="text-sm text-muted-foreground">
-                Make sure the TBFFNetwork contract is deployed and you&apos;re on the correct chain.
+                Make sure Anvil is running on port 8545 and contracts are deployed.
               </p>
-              <Button variant="outline" onClick={() => refetch()}>
+              <Button variant="outline" onClick={fetchData}>
                 Retry
               </Button>
             </CardContent>
@@ -136,68 +143,38 @@ export default function LivePage() {
                 <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
                   Network
                 </CardTitle>
-                {isCorrectChain ? (
-                  <Button
-                    size="sm"
-                    onClick={trigger}
-                    disabled={isPending || isConfirming}
-                  >
-                    {isPending
-                      ? "Signing..."
-                      : isConfirming
-                      ? "Confirming..."
-                      : "Trigger Redistribution"}
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => switchChain?.({ chainId: TARGET_CHAIN_ID })}
-                  >
-                    Switch Network to Settle
-                  </Button>
-                )}
+                <Button size="sm" onClick={handleSettle} disabled={settling}>
+                  {settling ? "Settling..." : "Trigger Redistribution"}
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
-              {isLoading ? (
-                <div className="h-[400px] flex items-center justify-center text-muted-foreground">
-                  Loading network...
-                </div>
-              ) : (
-                <NetworkGraph
-                  participants={participants}
-                  currentBalances={currentBalances}
-                />
-              )}
+              <NetworkGraph
+                participants={participants}
+                currentBalances={currentBalances}
+              />
 
-              {/* Settle status */}
-              {isSuccess && (
-                <p className="text-sm text-green-500 mt-2">
-                  Redistribution confirmed!
-                </p>
-              )}
-              {error && (
-                <p className="text-sm text-destructive mt-2">
-                  Error: {error.message?.slice(0, 100)}
+              {settleResult && (
+                <p
+                  className={`text-sm mt-2 ${
+                    settleResult.startsWith("Error") ? "text-destructive" : "text-green-500"
+                  }`}
+                >
+                  {settleResult}
                 </p>
               )}
 
               {/* Active streams legend */}
-              {streams.length > 0 && (
+              {data && data.streams.length > 0 && (
                 <div className="mt-4 space-y-1">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     Active Streams
                   </p>
-                  {streams.map((s, i) => {
-                    const fromMeta =
-                      PARTICIPANT_METADATA[s.from.toLowerCase()];
+                  {data.streams.map((s, i) => {
+                    const fromMeta = PARTICIPANT_METADATA[s.from.toLowerCase()];
                     const toMeta = PARTICIPANT_METADATA[s.to.toLowerCase()];
                     return (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 text-xs"
-                      >
+                      <div key={i} className="flex items-center gap-2 text-xs">
                         <span>
                           {fromMeta?.emoji ?? "?"} {fromMeta?.name ?? s.from.slice(0, 6)}
                         </span>
@@ -231,17 +208,14 @@ export default function LivePage() {
                       <th className="pb-2">Member</th>
                       <th className="pb-2 text-right">Balance</th>
                       <th className="pb-2 text-right">Threshold</th>
-                      <th className="pb-2 text-right">Flow</th>
                       <th className="pb-2 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {nodes?.map((addr, i) => {
+                    {data?.nodes.map((addr, i) => {
                       const meta = PARTICIPANT_METADATA[addr.toLowerCase()];
-                      const bal = animatedBalances[addr.toLowerCase()] ?? wadToUsd(balances?.[i] ?? 0n);
-                      const thresh = wadToUsd(thresholds?.[i] ?? 0n);
-                      const info = flowInfo.get(addr);
-                      const monthlyFlow = info ? flowRateToMonthly(info.netFlowRate) : 0;
+                      const bal = Number(data.balances[i]);
+                      const thresh = Number(data.thresholds[i]);
                       const isOverflowing = bal > thresh;
 
                       return (
@@ -255,16 +229,6 @@ export default function LivePage() {
                           </td>
                           <td className="py-2 text-right text-muted-foreground">
                             ${Math.round(thresh).toLocaleString()}
-                          </td>
-                          <td className="py-2 text-right font-mono tabular-nums">
-                            {monthlyFlow !== 0 ? (
-                              <span className={monthlyFlow > 0 ? "text-green-500" : "text-red-400"}>
-                                {monthlyFlow > 0 ? "+" : ""}
-                                ${Math.abs(Math.round(monthlyFlow)).toLocaleString()}/mo
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
                           </td>
                           <td className="py-2 text-center">
                             {isOverflowing ? (
@@ -294,7 +258,6 @@ export default function LivePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
-              {/* Contract Addresses */}
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase">Contracts</p>
                 <div className="space-y-1 text-xs">
@@ -315,33 +278,26 @@ export default function LivePage() {
 
               <Separator />
 
-              {/* Last Settle */}
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase">Last Settlement</p>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Time</span>
-                    <span>{formatTimestamp(lastSettle?.timestamp)}</span>
+                    <span>{formatTimestamp(data?.lastSettle.timestamp ?? 0)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Iterations</span>
-                    <span>{lastSettle?.iterations?.toString() ?? "—"}</span>
+                    <span>{data?.lastSettle.iterations ?? "—"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Converged</span>
-                    <span>
-                      {lastSettle?.converged === undefined
-                        ? "—"
-                        : lastSettle.converged
-                        ? "Yes"
-                        : "No"}
-                    </span>
+                    <span>{data?.lastSettle.converged ? "Yes" : "No"}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Redistributed</span>
                     <span>
-                      {lastSettle?.totalRedistributed
-                        ? `$${wadToUsd(lastSettle.totalRedistributed).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+                      {Number(data?.lastSettle.totalRedistributed ?? 0) > 0
+                        ? `$${Math.round(Number(data?.lastSettle.totalRedistributed)).toLocaleString()}`
                         : "—"}
                     </span>
                   </div>
@@ -350,25 +306,24 @@ export default function LivePage() {
 
               <Separator />
 
-              {/* Network Health */}
               <div className="space-y-1">
                 <p className="text-xs font-medium text-muted-foreground uppercase">Network Health</p>
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Nodes</span>
-                    <span>{nodes?.length ?? 0}</span>
+                    <span>{data?.nodeCount ?? 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Active Streams</span>
-                    <span>{streams.length}</span>
+                    <span>{data?.streams.length ?? 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Total Value</span>
                     <span>
                       $
-                      {balances
+                      {data
                         ? Math.round(
-                            balances.reduce((sum, b) => sum + wadToUsd(b), 0)
+                            data.balances.reduce((sum, b) => sum + Number(b), 0)
                           ).toLocaleString()
                         : "—"}
                     </span>
