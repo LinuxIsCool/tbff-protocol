@@ -15,3 +15,9 @@ fuzz.runs = 10000
 
 [profile.ci]
 fuzz.runs = 1000
+
+[profile.fork]
+# Fork tests: FOUNDRY_PROFILE=fork forge test --match-path "test/integration/*"
+
+[rpc_endpoints]
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
