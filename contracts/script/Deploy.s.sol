@@ -14,6 +14,7 @@ contract DeployScript is Script {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant STREAM_EPOCH = 30 days;
     uint256 internal constant THRESHOLD = 8000 * WAD;
+    uint256 internal constant MIN_THRESH = 3000 * WAD;
 
     // Base Sepolia Superfluid addresses
     address internal constant CFA_FORWARDER = 0xcfA132E353cB4E398080B9700609bb008eceB125;
@@ -36,11 +37,11 @@ contract DeployScript is Script {
         console2.log("TBFFNetwork deployed at:", address(network));
 
         // 2. Register 5 Mycopunks
-        network.registerNode(shawn, THRESHOLD);
-        network.registerNode(jeff, THRESHOLD);
-        network.registerNode(darren, THRESHOLD);
-        network.registerNode(simon, THRESHOLD);
-        network.registerNode(christina, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
+        network.registerNode(jeff, THRESHOLD, MIN_THRESH);
+        network.registerNode(darren, THRESHOLD, MIN_THRESH);
+        network.registerNode(simon, THRESHOLD, MIN_THRESH);
+        network.registerNode(christina, THRESHOLD, MIN_THRESH);
         console2.log("Registered 5 nodes");
 
         // 3. Set allocations matching mock-data.ts

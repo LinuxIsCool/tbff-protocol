@@ -1,31 +1,30 @@
 "use client";
 
 interface FlowThroughDisplayProps {
-  flowThrough: number;  // total WAD-converted USD that flowed through
+  overflow: number;     // cumulative overflow routed through this node (USD)
   balance: number;      // current balance
   threshold: number;    // max threshold
 }
 
 export default function FlowThroughDisplay({
-  flowThrough,
+  overflow,
   balance,
   threshold,
 }: FlowThroughDisplayProps) {
   const retained = Math.min(balance, threshold);
-  const continued = flowThrough;
 
-  if (flowThrough === 0 && balance <= threshold) {
+  if (overflow === 0 && balance <= threshold) {
     return (
       <span className="text-xs text-muted-foreground">
-        No flow-through yet
+        No overflow yet
       </span>
     );
   }
 
   return (
     <span className="text-xs text-muted-foreground font-mono tabular-nums">
-      <span title="Total flowed through">
-        ${Math.round(continued).toLocaleString()} flowed
+      <span title="Cumulative overflow routed">
+        ${Math.round(overflow).toLocaleString()} overflow
       </span>
       {" | "}
       <span title="Currently retained">

@@ -20,7 +20,7 @@ export async function GET() {
       converged,
       redistributed,
       profileData,
-      flowThroughData,
+      overflowData,
     ] = await Promise.all([
       client.readContract({
         address: TBFF_NETWORK_ADDRESS,
@@ -65,12 +65,13 @@ export async function GET() {
       client.readContract({
         address: TBFF_NETWORK_ADDRESS,
         abi: tbffNetworkAbi,
-        functionName: "getFlowThrough",
+        functionName: "getOverflow",
       }),
     ]);
 
-    const [nodes, balances, thresholds] = networkState as [
+    const [nodes, balances, thresholds, minThresholds] = networkState as [
       `0x${string}`[],
+      bigint[],
       bigint[],
       bigint[],
     ];
@@ -85,7 +86,7 @@ export async function GET() {
       string[],
       string[],
     ];
-    const [, flowAmounts] = flowThroughData as [
+    const [, overflowAmounts] = overflowData as [
       `0x${string}`[],
       bigint[],
     ];
@@ -94,6 +95,7 @@ export async function GET() {
       nodes,
       balances: balances.map((b) => formatUnits(b, 18)),
       thresholds: thresholds.map((t) => formatUnits(t, 18)),
+      minThresholds: minThresholds.map((t) => formatUnits(t, 18)),
       nodeCount: Number(nodeCount),
       streams: froms.map((f, i) => ({
         from: f,
@@ -112,7 +114,7 @@ export async function GET() {
         emoji: profileEmojis[i],
         role: profileRoles[i],
       })),
-      flowThrough: flowAmounts.map((a) => formatUnits(a, 18)),
+      overflow: overflowAmounts.map((a) => formatUnits(a, 18)),
     });
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : String(e);

@@ -14,18 +14,21 @@ import {
 import { useRegister, type RegistrationStep } from "@/lib/hooks/useRegister";
 
 const EMOJI_OPTIONS = [
-  "\u{1F33F}", // herb
-  "\u{1F527}", // wrench
-  "\u{26A1}",  // lightning
-  "\u{1F3D7}\u{FE0F}", // building construction
-  "\u{1F310}", // globe
-  "\u{1F332}", // evergreen tree
-  "\u{1F525}", // fire
-  "\u{1F4A1}", // light bulb
-  "\u{1F680}", // rocket
-  "\u{2728}",  // sparkles
-  "\u{1F30A}", // wave
-  "\u{1F33B}", // sunflower
+  // Nature & plants
+  "\u{1F33F}", "\u{1F332}", "\u{1F33B}", "\u{1F33E}", "\u{1F341}",
+  "\u{1F335}", "\u{1F340}", "\u{1F490}",
+  // Tools & tech
+  "\u{1F527}", "\u{2699}\u{FE0F}", "\u{1F4BB}", "\u{1F4A1}", "\u{1F50C}",
+  // Energy & elements
+  "\u{26A1}", "\u{1F525}", "\u{1F30A}", "\u{2744}\u{FE0F}", "\u{2728}",
+  // Space & science
+  "\u{1F680}", "\u{1F30D}", "\u{1F310}", "\u{2B50}", "\u{1F319}",
+  // Building & craft
+  "\u{1F3D7}\u{FE0F}", "\u{1F3AF}", "\u{1F3A8}", "\u{1F9E9}",
+  // People & community
+  "\u{1F91D}", "\u{1F9EC}", "\u{1F3B5}", "\u{1F4DA}",
+  // Animals
+  "\u{1F41D}", "\u{1F98B}", "\u{1F40C}", "\u{1F419}",
 ];
 
 const STEP_LABELS: Record<RegistrationStep, string> = {
@@ -41,7 +44,8 @@ export default function RegistrationFlow() {
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState(EMOJI_OPTIONS[0]);
   const [role, setRole] = useState("");
-  const [threshold, setThreshold] = useState(8000);
+  const [maxThreshold, setMaxThreshold] = useState(8000);
+  const [minThreshold, setMinThreshold] = useState(3000);
 
   const { register, step, error, reset } = useRegister();
 
@@ -49,9 +53,8 @@ export default function RegistrationFlow() {
   const canSubmit = name.trim().length > 0 && !isSubmitting;
 
   async function handleSubmit() {
-    await register(threshold, name.trim(), emoji, role.trim() || "Participant");
+    await register(maxThreshold, minThreshold, name.trim(), emoji, role.trim() || "Participant");
 
-    // Auto-close on success after brief display
     setTimeout(() => {
       setOpen(false);
       reset();
@@ -65,14 +68,30 @@ export default function RegistrationFlow() {
     }
   }
 
+  function handleMaxThresholdInput(value: string) {
+    const num = parseInt(value.replace(/[^0-9]/g, ""));
+    if (!isNaN(num)) {
+      const clamped = Math.max(1000, Math.min(50000, num));
+      setMaxThreshold(clamped);
+      if (minThreshold > clamped) setMinThreshold(clamped);
+    }
+  }
+
+  function handleMinThresholdInput(value: string) {
+    const num = parseInt(value.replace(/[^0-9]/g, ""));
+    if (!isNaN(num)) {
+      setMinThreshold(Math.max(0, Math.min(Math.min(20000, maxThreshold), num)));
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm">Join Network</Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md text-foreground">
         <DialogHeader>
-          <DialogTitle>Join the Network</DialogTitle>
+          <DialogTitle className="text-foreground">Join the Network</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -85,25 +104,30 @@ export default function RegistrationFlow() {
               placeholder="Your name"
               maxLength={64}
               disabled={isSubmitting}
-              className="h-8"
+              className="h-8 text-foreground"
             />
           </div>
 
           {/* Emoji picker */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">Emoji</label>
-            <div className="flex flex-wrap gap-1">
+            <label className="text-xs font-medium text-muted-foreground">
+              Emoji <span className="text-foreground ml-1">{emoji}</span>
+            </label>
+            <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto p-1 border border-border rounded-md bg-muted/30">
               {EMOJI_OPTIONS.map((e) => (
-                <Button
+                <button
                   key={e}
-                  variant={emoji === e ? "default" : "outline"}
-                  size="sm"
-                  className="h-8 w-8 p-0 text-base"
+                  type="button"
+                  className={`h-8 w-8 rounded text-lg flex items-center justify-center transition-colors ${
+                    emoji === e
+                      ? "bg-primary text-primary-foreground ring-1 ring-ring"
+                      : "hover:bg-accent"
+                  }`}
                   onClick={() => setEmoji(e)}
                   disabled={isSubmitting}
                 >
                   {e}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
@@ -117,31 +141,75 @@ export default function RegistrationFlow() {
               placeholder="e.g. Developer, Designer, Researcher"
               maxLength={128}
               disabled={isSubmitting}
-              className="h-8"
+              className="h-8 text-foreground"
             />
           </div>
 
-          {/* Threshold slider */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between text-xs">
-              <span className="font-medium text-muted-foreground">Threshold</span>
-              <span className="font-mono">${threshold.toLocaleString()}</span>
-            </div>
-            <Slider
-              value={[threshold]}
-              min={1000}
-              max={50000}
-              step={1000}
-              onValueChange={([v]) => setThreshold(v)}
-              disabled={isSubmitting}
-            />
-            <div className="flex justify-between text-[10px] text-muted-foreground">
-              <span>$1,000</span>
-              <span>$50,000</span>
+          {/* Max Threshold */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              Max threshold (overflow above this flows out)
+            </label>
+            <div className="flex items-center gap-3">
+              <Slider
+                value={[maxThreshold]}
+                min={1000}
+                max={50000}
+                step={1000}
+                onValueChange={([v]) => {
+                  setMaxThreshold(v);
+                  if (minThreshold > v) setMinThreshold(v);
+                }}
+                disabled={isSubmitting}
+                className="flex-1"
+              />
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="text"
+                  value={maxThreshold.toLocaleString()}
+                  onChange={(e) => handleMaxThresholdInput(e.target.value)}
+                  disabled={isSubmitting}
+                  className="h-8 w-20 text-xs text-right font-mono text-foreground"
+                />
+                <span className="text-[10px] text-muted-foreground">/mo</span>
+              </div>
             </div>
           </div>
 
-          {/* Status / Progress */}
+          {/* Min Threshold */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              Min threshold (hold everything below this)
+            </label>
+            <div className="flex items-center gap-3">
+              <Slider
+                value={[minThreshold]}
+                min={0}
+                max={Math.min(20000, maxThreshold)}
+                step={500}
+                onValueChange={([v]) => setMinThreshold(v)}
+                disabled={isSubmitting}
+                className="flex-1"
+              />
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-muted-foreground">$</span>
+                <Input
+                  type="text"
+                  value={minThreshold.toLocaleString()}
+                  onChange={(e) => handleMinThresholdInput(e.target.value)}
+                  disabled={isSubmitting}
+                  className="h-8 w-20 text-xs text-right font-mono text-foreground"
+                />
+                <span className="text-[10px] text-muted-foreground">/mo</span>
+              </div>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Below min: hold all. Between min & max: active, no overflow. Above max: overflow redistributed.
+            </p>
+          </div>
+
+          {/* Status */}
           {step !== "idle" && (
             <div
               className={`text-sm text-center py-1 ${

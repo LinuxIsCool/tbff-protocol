@@ -24,6 +24,7 @@ contract TBFFNetworkUnitTest is Test {
     address public christina = address(0x5);
 
     uint256 public constant THRESHOLD = 8000 * WAD;
+    uint256 public constant MIN_THRESH = 3000 * WAD;
 
     function setUp() public {
         owner = address(this);
@@ -35,11 +36,11 @@ contract TBFFNetworkUnitTest is Test {
     // ─── Helper: Register all 5 nodes ────────────────────────────
 
     function _registerAll() internal {
-        network.registerNode(shawn, THRESHOLD);
-        network.registerNode(jeff, THRESHOLD);
-        network.registerNode(darren, THRESHOLD);
-        network.registerNode(simon, THRESHOLD);
-        network.registerNode(christina, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
+        network.registerNode(jeff, THRESHOLD, MIN_THRESH);
+        network.registerNode(darren, THRESHOLD, MIN_THRESH);
+        network.registerNode(simon, THRESHOLD, MIN_THRESH);
+        network.registerNode(christina, THRESHOLD, MIN_THRESH);
     }
 
     // ─── Helper: Set mock-data allocations ───────────────────────
@@ -118,12 +119,13 @@ contract TBFFNetworkUnitTest is Test {
     // ─── Tests ───────────────────────────────────────────────────
 
     function test_registerNode() public {
-        network.registerNode(shawn, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
 
         assertEq(network.getNodeCount(), 1);
         assertTrue(network.isNode(shawn));
         assertEq(network.nodeIndex(shawn), 0);
         assertEq(network.thresholds(0), THRESHOLD);
+        assertEq(network.minThresholds(0), MIN_THRESH);
     }
 
     function test_registerNode_multiple() public {
@@ -134,9 +136,9 @@ contract TBFFNetworkUnitTest is Test {
     }
 
     function test_registerNode_revertsDuplicate() public {
-        network.registerNode(shawn, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
         vm.expectRevert(TBFFNetwork.NodeAlreadyRegistered.selector);
-        network.registerNode(shawn, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
     }
 
     function test_removeNode() public {
@@ -269,11 +271,11 @@ contract TBFFNetworkUnitTest is Test {
     function test_onlyOwner_registerNode() public {
         vm.prank(address(0xBEEF));
         vm.expectRevert(TBFFNetwork.OnlyOwner.selector);
-        network.registerNode(shawn, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
     }
 
     function test_onlyOwner_removeNode() public {
-        network.registerNode(shawn, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
         vm.prank(address(0xBEEF));
         vm.expectRevert(TBFFNetwork.OnlyOwner.selector);
         network.removeNode(shawn);
@@ -300,9 +302,9 @@ contract TBFFNetworkUnitTest is Test {
         bal2 = bound(bal2, 0, 100_000 * WAD);
 
         // Register 3 nodes
-        network.registerNode(shawn, THRESHOLD);
-        network.registerNode(jeff, THRESHOLD);
-        network.registerNode(darren, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
+        network.registerNode(jeff, THRESHOLD, MIN_THRESH);
+        network.registerNode(darren, THRESHOLD, MIN_THRESH);
 
         // Set circular allocations: shawn→jeff→darren→shawn
         {
@@ -331,7 +333,7 @@ contract TBFFNetworkUnitTest is Test {
         // We can't directly verify final balances since settle() operates
         // via streams (mock), but we can verify the math library's conservation.
         // Read the network state and run converge manually.
-        (address[] memory nodes, uint256[] memory balances, uint256[] memory thresh) = network.getNetworkState();
+        (address[] memory nodes, uint256[] memory balances, uint256[] memory thresh, uint256[] memory minThresh) = network.getNetworkState();
 
         // The converge function is pure — test it via the math lib directly
         // (already tested in TBFFMath.t.sol fuzz tests)
@@ -341,19 +343,21 @@ contract TBFFNetworkUnitTest is Test {
         assertEq(balances[2], bal2);
         assertEq(nodes.length, 3);
         assertEq(thresh[0], THRESHOLD);
+        assertEq(minThresh[0], MIN_THRESH);
     }
 
     function test_getNetworkState() public {
         _registerAll();
         _setBalances(6000 * WAD, 5000 * WAD, 4000 * WAD, 7000 * WAD, 10000 * WAD);
 
-        (address[] memory retNodes, uint256[] memory balances, uint256[] memory thresh) = network.getNetworkState();
+        (address[] memory retNodes, uint256[] memory balances, uint256[] memory thresh, uint256[] memory minThresh) = network.getNetworkState();
 
         assertEq(retNodes.length, 5);
         assertEq(retNodes[0], shawn);
         assertEq(balances[0], 6000 * WAD);
         assertEq(balances[4], 10000 * WAD);
         assertEq(thresh[0], THRESHOLD);
+        assertEq(minThresh[0], MIN_THRESH);
     }
 
     // ─── Phase 3 Tests ─────────────────────────────────────────
@@ -366,12 +370,13 @@ contract TBFFNetworkUnitTest is Test {
         token.setBalance(address(network), 1000 * WAD);
 
         vm.prank(alice);
-        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Developer");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Developer");
 
         assertTrue(network.isNode(alice));
         assertEq(network.getNodeCount(), 1);
         assertEq(network.nodeIndex(alice), 0);
         assertEq(network.thresholds(0), 5000 * WAD);
+        assertEq(network.minThresholds(0), MIN_THRESH);
 
         // Profile stored
         (string memory name, string memory emoji, string memory role) = network.getProfile(alice);
@@ -385,51 +390,51 @@ contract TBFFNetworkUnitTest is Test {
         // CSR extended: allocOffsets should have 2 entries [0, 0]
         // Verify by registering a second node and checking count
         vm.prank(bob);
-        network.selfRegister(3000 * WAD, "Bob", unicode"🔧", "Builder");
+        network.selfRegister(3000 * WAD, MIN_THRESH, "Bob", unicode"🔧", "Builder");
         assertEq(network.getNodeCount(), 2);
     }
 
     function test_selfRegister_duplicateReverts() public {
         vm.prank(alice);
-        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
 
         vm.prank(alice);
         vm.expectRevert(TBFFNetwork.NodeAlreadyRegistered.selector);
-        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
     }
 
     function test_selfRegister_thresholdBounds() public {
         // Below minimum
         vm.prank(alice);
         vm.expectRevert(TBFFNetwork.ThresholdOutOfBounds.selector);
-        network.selfRegister(500 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(500 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
 
         // Above maximum
         vm.prank(alice);
         vm.expectRevert(TBFFNetwork.ThresholdOutOfBounds.selector);
-        network.selfRegister(60000 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(60000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
     }
 
     function test_selfRegister_stringLength() public {
         // Empty name
         vm.prank(alice);
         vm.expectRevert(TBFFNetwork.StringTooLong.selector);
-        network.selfRegister(5000 * WAD, "", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "", unicode"🌿", "Dev");
 
         // Name too long (65 bytes)
         vm.prank(alice);
         vm.expectRevert(TBFFNetwork.StringTooLong.selector);
-        network.selfRegister(5000 * WAD, "AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFGGGGG", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "AAAAAAAAAABBBBBBBBBBCCCCCCCCCCDDDDDDDDDDEEEEEEEEEEFFFFFFFFFFGGGGG", unicode"🌿", "Dev");
     }
 
     function test_setMyAllocations_succeeds() public {
         // Register 3 nodes
         vm.prank(alice);
-        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
         vm.prank(bob);
-        network.selfRegister(5000 * WAD, "Bob", unicode"🔧", "Builder");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Bob", unicode"🔧", "Builder");
         vm.prank(address(0xCAFE));
-        network.selfRegister(5000 * WAD, "Carol", unicode"⚡", "Ops");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Carol", unicode"⚡", "Ops");
 
         // Alice sets allocations: Bob(1) 60%, Carol(2) 40%
         uint256[] memory targets = new uint256[](2);
@@ -460,9 +465,9 @@ contract TBFFNetworkUnitTest is Test {
 
     function test_setMyAllocations_selfAlloc() public {
         vm.prank(alice);
-        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
         vm.prank(bob);
-        network.selfRegister(5000 * WAD, "Bob", unicode"🔧", "Builder");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Bob", unicode"🔧", "Builder");
 
         // Alice tries to allocate to herself (index 0)
         uint256[] memory targets = new uint256[](1);
@@ -477,17 +482,18 @@ contract TBFFNetworkUnitTest is Test {
 
     function test_setMyThreshold_succeeds() public {
         vm.prank(alice);
-        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
 
         vm.prank(alice);
-        network.setMyThreshold(10000 * WAD);
+        network.setMyThreshold(10000 * WAD, 5000 * WAD);
 
         assertEq(network.thresholds(0), 10000 * WAD);
+        assertEq(network.minThresholds(0), 5000 * WAD);
     }
 
     function test_setMyProfile_succeeds() public {
         vm.prank(alice);
-        network.selfRegister(5000 * WAD, "Alice", unicode"🌿", "Dev");
+        network.selfRegister(5000 * WAD, MIN_THRESH, "Alice", unicode"🌿", "Dev");
 
         vm.prank(alice);
         network.setMyProfile("Alicia", unicode"🌸", "Senior Dev");
@@ -534,10 +540,10 @@ contract TBFFNetworkUnitTest is Test {
         network.settle();
 
         // Christina should have flow-through recorded (2000 WAD overflow)
-        assertEq(network.cumulativeFlowThrough(christina), 2000 * WAD);
+        assertEq(network.cumulativeOverflow(christina), 2000 * WAD);
 
         // Others below threshold, no flow-through
-        assertEq(network.cumulativeFlowThrough(shawn), 0);
+        assertEq(network.cumulativeOverflow(shawn), 0);
     }
 
     function test_getAllProfiles() public {
@@ -577,10 +583,10 @@ contract TBFFNetworkUnitTest is Test {
         if (threshold < 1000 * WAD || threshold > 50000 * WAD) {
             vm.prank(alice);
             vm.expectRevert(TBFFNetwork.ThresholdOutOfBounds.selector);
-            network.selfRegister(threshold, "Alice", unicode"🌿", "Dev");
+            network.selfRegister(threshold, 0, "Alice", unicode"🌿", "Dev");
         } else {
             vm.prank(alice);
-            network.selfRegister(threshold, "Alice", unicode"🌿", "Dev");
+            network.selfRegister(threshold, 0, "Alice", unicode"🌿", "Dev");
             assertEq(network.thresholds(0), threshold);
         }
     }

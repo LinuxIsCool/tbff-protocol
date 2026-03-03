@@ -88,6 +88,7 @@ export function bridgeToParticipant(
   address: Address,
   balance: bigint,
   threshold: bigint,
+  minThreshold: bigint,
   allNodes: Address[],
   allocTargets?: number[],
   allocWeights?: bigint[]
@@ -117,7 +118,7 @@ export function bridgeToParticipant(
     emoji: meta.emoji,
     role: meta.role,
     balance: wadToUsd(balance),
-    minThreshold: 3000,
+    minThreshold: wadToUsd(minThreshold),
     maxThreshold: wadToUsd(threshold),
     allocations,
   };
@@ -131,6 +132,7 @@ export function profileToParticipant(
   profile: OnChainProfile,
   balance: bigint,
   threshold: bigint,
+  minThreshold: bigint,
 ): Participant {
   const hasProfile = profile.name.length > 0;
   const fallback = PARTICIPANT_METADATA[profile.address.toLowerCase()];
@@ -146,7 +148,7 @@ export function profileToParticipant(
     emoji,
     role,
     balance: wadToUsd(balance),
-    minThreshold: 3000,
+    minThreshold: wadToUsd(minThreshold),
     maxThreshold: wadToUsd(threshold),
     allocations: [],
   };

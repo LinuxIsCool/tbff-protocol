@@ -13,6 +13,7 @@ abstract contract SuperfluidSetup is Test {
     uint256 internal constant WAD = 1e18;
     uint256 internal constant STREAM_EPOCH = 30 days;
     uint256 internal constant THRESHOLD = 8000 * WAD;
+    uint256 internal constant MIN_THRESH = 3000 * WAD;
 
     // Base Sepolia Superfluid addresses
     address internal constant CFA_FORWARDER = 0xcfA132E353cB4E398080B9700609bb008eceB125;
@@ -64,11 +65,11 @@ abstract contract SuperfluidSetup is Test {
 
     function _registerAllNodes() internal {
         vm.startPrank(deployer);
-        network.registerNode(shawn, THRESHOLD);
-        network.registerNode(jeff, THRESHOLD);
-        network.registerNode(darren, THRESHOLD);
-        network.registerNode(simon, THRESHOLD);
-        network.registerNode(christina, THRESHOLD);
+        network.registerNode(shawn, THRESHOLD, MIN_THRESH);
+        network.registerNode(jeff, THRESHOLD, MIN_THRESH);
+        network.registerNode(darren, THRESHOLD, MIN_THRESH);
+        network.registerNode(simon, THRESHOLD, MIN_THRESH);
+        network.registerNode(christina, THRESHOLD, MIN_THRESH);
         vm.stopPrank();
     }
 

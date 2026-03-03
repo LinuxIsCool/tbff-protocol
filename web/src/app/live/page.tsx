@@ -13,7 +13,7 @@ import ProfileEditor from "@/components/ProfileEditor";
 import LiveAllocationEditor from "@/components/LiveAllocationEditor";
 import FlowThroughDisplay from "@/components/FlowThroughDisplay";
 import RainButton from "@/components/RainButton";
-import { PARTICIPANT_METADATA } from "@/lib/tbff/chain-bridge";
+import { PARTICIPANT_METADATA, flowRateToMonthly } from "@/lib/tbff/chain-bridge";
 import { TBFF_NETWORK_ADDRESS, SUPER_TOKEN_ADDRESS, TARGET_CHAIN_ID } from "@/lib/tbff/live-config";
 import { tbffNetworkAbi } from "@/lib/tbff/abis/TBFFNetwork";
 import type { Participant } from "@/lib/tbff/engine";
@@ -38,8 +38,9 @@ interface NetworkData {
     converged: boolean;
     totalRedistributed: string;
   };
+  minThresholds: string[];
   profiles: ProfileInfo[];
-  flowThrough: string[];
+  overflow: string[];
 }
 
 function formatTimestamp(ts: number): string {
@@ -47,10 +48,8 @@ function formatTimestamp(ts: number): string {
   return new Date(ts * 1000).toLocaleString();
 }
 
-function flowRateToMonthly(rateStr: string): number {
-  const rate = BigInt(rateStr);
-  const monthly = rate * 30n * 24n * 60n * 60n;
-  return Number(monthly / BigInt(1e12)) / 1e6;
+function flowRateToMonthlyStr(rateStr: string): number {
+  return flowRateToMonthly(BigInt(rateStr));
 }
 
 /** Resolve display metadata for an address, preferring on-chain profile */
@@ -144,6 +143,7 @@ export default function LivePage() {
       const meta = getNodeMeta(addr, profiles);
       const bal = Number(data.balances[i]);
       const thresh = Number(data.thresholds[i]);
+      const minThresh = Number(data.minThresholds?.[i] ?? 0);
 
       participants.push({
         id: meta.id,
@@ -151,7 +151,7 @@ export default function LivePage() {
         emoji: meta.emoji,
         role: meta.role,
         balance: bal,
-        minThreshold: 3000,
+        minThreshold: minThresh,
         maxThreshold: thresh,
         allocations: [],
       });
@@ -283,7 +283,7 @@ export default function LivePage() {
                           {toMeta.emoji} {toMeta.name}
                         </span>
                         <Badge variant="outline" className="text-[10px] ml-auto">
-                          ${flowRateToMonthly(s.rate).toFixed(0)}/mo
+                          ${flowRateToMonthlyStr(s.rate).toFixed(0)}/mo
                         </Badge>
                       </div>
                     );
@@ -316,7 +316,8 @@ export default function LivePage() {
                       const meta = getNodeMeta(addr, profiles);
                       const bal = Number(data.balances[i]);
                       const thresh = Number(data.thresholds[i]);
-                      const flow = Number(data.flowThrough?.[i] ?? 0);
+                      const flow = Number(data.overflow?.[i] ?? 0);
+                      const minThresh = Number(data.minThresholds?.[i] ?? 0);
                       const isOverflowing = bal > thresh;
 
                       return (
@@ -327,7 +328,7 @@ export default function LivePage() {
                               {meta.name}
                             </div>
                             <FlowThroughDisplay
-                              flowThrough={flow}
+                              overflow={flow}
                               balance={bal}
                               threshold={thresh}
                             />
@@ -339,13 +340,17 @@ export default function LivePage() {
                             ${Math.round(thresh).toLocaleString()}
                           </td>
                           <td className="py-2 text-center">
-                            {isOverflowing ? (
+                            {bal < minThresh ? (
+                              <Badge variant="secondary" className="text-[10px]">
+                                Holding
+                              </Badge>
+                            ) : isOverflowing ? (
                               <Badge variant="destructive" className="text-[10px]">
                                 Overflow
                               </Badge>
                             ) : (
                               <Badge variant="secondary" className="text-[10px]">
-                                Healthy
+                                Active
                               </Badge>
                             )}
                           </td>

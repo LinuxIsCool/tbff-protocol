@@ -26,7 +26,8 @@ export function useRegister() {
   const publicClient = usePublicClient({ chainId: TARGET_CHAIN_ID });
 
   async function register(
-    thresholdUsd: number,
+    maxThresholdUsd: number,
+    minThresholdUsd: number,
     name: string,
     emoji: string,
     role: string
@@ -52,7 +53,7 @@ export function useRegister() {
         address: TBFF_NETWORK_ADDRESS,
         abi: tbffNetworkAbi,
         functionName: "selfRegister",
-        args: [usdToWad(thresholdUsd), name, emoji, role],
+        args: [usdToWad(maxThresholdUsd), usdToWad(minThresholdUsd), name, emoji, role],
         chainId: TARGET_CHAIN_ID,
       });
 

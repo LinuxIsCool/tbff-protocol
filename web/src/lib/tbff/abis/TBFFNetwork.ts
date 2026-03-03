@@ -8,6 +8,7 @@ export const tbffNetworkAbi = [
       { name: "", type: "address[]" },
       { name: "", type: "uint256[]" },
       { name: "", type: "uint256[]" },
+      { name: "", type: "uint256[]" },
     ],
     stateMutability: "view",
   },
@@ -102,6 +103,20 @@ export const tbffNetworkAbi = [
   },
   {
     type: "function",
+    name: "MAX_MIN_THRESHOLD",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "minThresholds",
+    inputs: [{ name: "", type: "uint256" }],
+    outputs: [{ name: "", type: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "SEED_AMOUNT",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
@@ -133,7 +148,7 @@ export const tbffNetworkAbi = [
   },
   {
     type: "function",
-    name: "getFlowThrough",
+    name: "getOverflow",
     inputs: [],
     outputs: [
       { name: "", type: "address[]" },
@@ -143,7 +158,7 @@ export const tbffNetworkAbi = [
   },
   {
     type: "function",
-    name: "cumulativeFlowThrough",
+    name: "cumulativeOverflow",
     inputs: [{ name: "node", type: "address" }],
     outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
@@ -162,6 +177,7 @@ export const tbffNetworkAbi = [
     name: "selfRegister",
     inputs: [
       { name: "maxThreshold", type: "uint256" },
+      { name: "minThreshold", type: "uint256" },
       { name: "name", type: "string" },
       { name: "emoji", type: "string" },
       { name: "role", type: "string" },
@@ -182,7 +198,10 @@ export const tbffNetworkAbi = [
   {
     type: "function",
     name: "setMyThreshold",
-    inputs: [{ name: "newThreshold", type: "uint256" }],
+    inputs: [
+      { name: "newMaxThreshold", type: "uint256" },
+      { name: "newMinThreshold", type: "uint256" },
+    ],
     outputs: [],
     stateMutability: "nonpayable",
   },
@@ -265,7 +284,8 @@ export const tbffNetworkAbi = [
     name: "MyThresholdSet",
     inputs: [
       { name: "node", type: "address", indexed: true },
-      { name: "newThreshold", type: "uint256", indexed: false },
+      { name: "newMaxThreshold", type: "uint256", indexed: false },
+      { name: "newMinThreshold", type: "uint256", indexed: false },
     ],
   },
   {

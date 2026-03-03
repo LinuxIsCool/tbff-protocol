@@ -21,7 +21,7 @@ export interface Participant {
   emoji: string;
   role: string;
   balance: number;
-  minThreshold: number; // display only in Phase 1
+  minThreshold: number; // overflow gate: no redistribution if balance < minThreshold
   maxThreshold: number; // used by the equation
   allocations: Allocation[];
 }
@@ -108,7 +108,10 @@ export function iterateOnce(
   const overflows: Record<string, number> = {};
   const transfers: Transfer[] = [];
 
-  // Phase 1: Cap all balances
+  // Phase 1: Cap all balances and compute overflow
+  // Note: minThreshold gate is NOT applied here — it lives in the stream/display
+  // layer only (mirrors Solidity: TBFFMath has no minThreshold, gate is in
+  // _applyRedistribution). This preserves the Engine Mirror Pattern.
   for (const p of participants) {
     newBalances[p.id] = capToThreshold(p.balance, p.maxThreshold);
     overflows[p.id] = computeOverflow(p.balance, p.maxThreshold);

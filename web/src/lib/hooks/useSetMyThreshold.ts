@@ -19,12 +19,12 @@ export function useSetMyThreshold() {
     error: confirmError,
   } = useWaitForTransactionReceipt({ hash });
 
-  function submit(thresholdUsd: number) {
+  function submit(maxThresholdUsd: number, minThresholdUsd: number) {
     writeContract({
       address: TBFF_NETWORK_ADDRESS,
       abi: tbffNetworkAbi,
       functionName: "setMyThreshold",
-      args: [usdToWad(thresholdUsd)],
+      args: [usdToWad(maxThresholdUsd), usdToWad(minThresholdUsd)],
       chainId: TARGET_CHAIN_ID,
     });
   }

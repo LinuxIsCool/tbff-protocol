@@ -26,7 +26,8 @@ contract TBFFNetwork {
     mapping(address => uint256) public nodeIndex;
     mapping(address => bool) public isNode;
 
-    uint256[] public thresholds; // WAD, parallel to nodes[]
+    uint256[] public thresholds;    // WAD, max threshold parallel to nodes[]
+    uint256[] public minThresholds;  // WAD, min threshold parallel to nodes[]. Overflow gated if balance < minThreshold.
 
     // CSR format for allocation graph (mirrors TBFFMath.NetworkState)
     uint256[] internal _allocOffsets;  // length n+1
@@ -47,11 +48,12 @@ contract TBFFNetwork {
         string role;   // max 128 bytes
     }
     mapping(address => Profile) public profiles;
-    mapping(address => uint256) public cumulativeFlowThrough; // WAD lifetime total
+    mapping(address => uint256) public cumulativeOverflow; // WAD lifetime total overflow routed through node
 
-    uint256 public constant MIN_THRESHOLD = 1_000 * 1e18;  // $1K floor
-    uint256 public constant MAX_THRESHOLD = 50_000 * 1e18; // $50K ceiling
-    uint256 public constant SEED_AMOUNT = 100 * 1e18;      // $100 seed
+    uint256 public constant MIN_THRESHOLD = 1_000 * 1e18;      // $1K floor for maxThreshold
+    uint256 public constant MAX_THRESHOLD = 50_000 * 1e18;     // $50K ceiling for maxThreshold
+    uint256 public constant MAX_MIN_THRESHOLD = 20_000 * 1e18; // $20K ceiling for minThreshold
+    uint256 public constant SEED_AMOUNT = 100 * 1e18;          // $100 seed
 
     // ─── Events ──────────────────────────────────────────────────
 
@@ -66,7 +68,7 @@ contract TBFFNetwork {
     event SelfRegistered(address indexed node, uint256 maxThreshold, string name);
     event ProfileUpdated(address indexed node);
     event MyAllocationsSet(address indexed node);
-    event MyThresholdSet(address indexed node, uint256 newThreshold);
+    event MyThresholdSet(address indexed node, uint256 newMaxThreshold, uint256 newMinThreshold);
     event Rained(address indexed from, uint256 amount, uint256 perNode);
     event SeedTransferred(address indexed to, uint256 amount);
     event SeedFailed(address indexed to);
@@ -79,6 +81,8 @@ contract TBFFNetwork {
     error InvalidWeights();
     error InvalidTargets();
     error ThresholdOutOfBounds();
+    error MinThresholdOutOfBounds();
+    error MinThresholdExceedsMax();
     error StringTooLong();
     error ZeroNodes();
     error SelfAllocation();
@@ -108,13 +112,15 @@ contract TBFFNetwork {
 
     // ─── Admin Functions ─────────────────────────────────────────
 
-    function registerNode(address node, uint256 maxThreshold) external onlyOwner {
+    function registerNode(address node, uint256 maxThreshold, uint256 minThreshold) external onlyOwner {
         if (isNode[node]) revert NodeAlreadyRegistered();
+        if (minThreshold > maxThreshold) revert MinThresholdExceedsMax();
 
         nodeIndex[node] = nodes.length;
         nodes.push(node);
         isNode[node] = true;
         thresholds.push(maxThreshold);
+        minThresholds.push(minThreshold);
 
         // Extend CSR: new node has no allocations yet
         _allocOffsets.push(_allocOffsets[_allocOffsets.length - 1]);
@@ -134,10 +140,12 @@ contract TBFFNetwork {
             nodes[idx] = lastNode;
             nodeIndex[lastNode] = idx;
             thresholds[idx] = thresholds[lastIdx];
+            minThresholds[idx] = minThresholds[lastIdx];
         }
 
         nodes.pop();
         thresholds.pop();
+        minThresholds.pop();
         delete nodeIndex[node];
         delete isNode[node];
 
@@ -190,12 +198,15 @@ contract TBFFNetwork {
 
     function selfRegister(
         uint256 maxThreshold,
+        uint256 minThreshold,
         string calldata name,
         string calldata emoji,
         string calldata role
     ) external {
         if (isNode[msg.sender]) revert NodeAlreadyRegistered();
         if (maxThreshold < MIN_THRESHOLD || maxThreshold > MAX_THRESHOLD) revert ThresholdOutOfBounds();
+        if (minThreshold > MAX_MIN_THRESHOLD) revert MinThresholdOutOfBounds();
+        if (minThreshold > maxThreshold) revert MinThresholdExceedsMax();
         if (bytes(name).length == 0 || bytes(name).length > 64) revert StringTooLong();
         if (bytes(emoji).length == 0 || bytes(emoji).length > 8) revert StringTooLong();
         if (bytes(role).length > 128) revert StringTooLong();
@@ -205,6 +216,7 @@ contract TBFFNetwork {
         nodes.push(msg.sender);
         isNode[msg.sender] = true;
         thresholds.push(maxThreshold);
+        minThresholds.push(minThreshold);
         _allocOffsets.push(_allocOffsets[_allocOffsets.length - 1]); // CSR extension
 
         profiles[msg.sender] = Profile({name: name, emoji: emoji, role: role});
@@ -242,11 +254,15 @@ contract TBFFNetwork {
         emit MyAllocationsSet(msg.sender);
     }
 
-    function setMyThreshold(uint256 newThreshold) external {
+    function setMyThreshold(uint256 newMaxThreshold, uint256 newMinThreshold) external {
         if (!isNode[msg.sender]) revert NodeNotRegistered();
-        if (newThreshold < MIN_THRESHOLD || newThreshold > MAX_THRESHOLD) revert ThresholdOutOfBounds();
-        thresholds[nodeIndex[msg.sender]] = newThreshold;
-        emit MyThresholdSet(msg.sender, newThreshold);
+        if (newMaxThreshold < MIN_THRESHOLD || newMaxThreshold > MAX_THRESHOLD) revert ThresholdOutOfBounds();
+        if (newMinThreshold > MAX_MIN_THRESHOLD) revert MinThresholdOutOfBounds();
+        if (newMinThreshold > newMaxThreshold) revert MinThresholdExceedsMax();
+        uint256 idx = nodeIndex[msg.sender];
+        thresholds[idx] = newMaxThreshold;
+        minThresholds[idx] = newMinThreshold;
+        emit MyThresholdSet(msg.sender, newMaxThreshold, newMinThreshold);
     }
 
     function setMyProfile(string calldata name, string calldata emoji, string calldata role) external {
@@ -317,10 +333,10 @@ contract TBFFNetwork {
     function getNetworkState()
         external
         view
-        returns (address[] memory, uint256[] memory, uint256[] memory)
+        returns (address[] memory, uint256[] memory, uint256[] memory, uint256[] memory)
     {
         uint256[] memory balances = _balancesFromChain();
-        return (nodes, balances, thresholds);
+        return (nodes, balances, thresholds, minThresholds);
     }
 
     function getActiveStreams()
@@ -411,11 +427,11 @@ contract TBFFNetwork {
         }
     }
 
-    function getFlowThrough() external view returns (address[] memory, uint256[] memory amounts) {
+    function getOverflow() external view returns (address[] memory, uint256[] memory amounts) {
         uint256 n = nodes.length;
         amounts = new uint256[](n);
         for (uint256 i; i < n;) {
-            amounts[i] = cumulativeFlowThrough[nodes[i]];
+            amounts[i] = cumulativeOverflow[nodes[i]];
             unchecked { ++i; }
         }
         return (nodes, amounts);
@@ -477,9 +493,13 @@ contract TBFFNetwork {
         uint256 n = nodes.length;
 
         for (uint256 i; i < n;) {
-            uint256 overflow = TBFFMath.computeOverflow(currentBalances[i], thresholds[i]);
+            // minThreshold gate: only compute overflow if balance >= minThreshold
+            uint256 overflow;
+            if (currentBalances[i] >= minThresholds[i]) {
+                overflow = TBFFMath.computeOverflow(currentBalances[i], thresholds[i]);
+            }
             if (overflow > 0) {
-                cumulativeFlowThrough[nodes[i]] += overflow;
+                cumulativeOverflow[nodes[i]] += overflow;
             }
             uint256 start = _allocOffsets[i];
             uint256 end = _allocOffsets[i + 1];
