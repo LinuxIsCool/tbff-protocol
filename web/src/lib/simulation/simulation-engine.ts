@@ -124,7 +124,7 @@ export function runMonthlySimulation(
   const participantIds = participants.map((p) => p.id);
 
   // Initialize balances and lockup state
-  let balances: Record<string, number> = {};
+  const balances: Record<string, number> = {};
   const lockupSatisfied: Record<string, boolean> = {};
   const cumulativeFlowThrough: Record<string, number> = {};
 
