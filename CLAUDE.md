@@ -17,7 +17,7 @@ Use context7 often to ensure optimal use of tooling.
 x^(k+1) = min(x^(k), t) + P^T · max(0, x^(k) - t)
 ```
 
-- `x` = balance vector
+- `x` = value vector (dimensionally agnostic: balance in WAD, or income rate in WAD/second)
 - `t` = threshold vector (maxThreshold per participant)
 - `P` = allocation matrix (sparse, weights sum to 1.0 per row)
 
@@ -34,9 +34,9 @@ x^(k+1) = min(x^(k), t) + P^T · max(0, x^(k) - t)
 ```typescript
 // web/src/lib/tbff/engine.ts
 interface Allocation { target: string; weight: number; }  // 0-1
-interface Participant { id, name, emoji, role, balance, minThreshold, maxThreshold, allocations[] }
-interface IterationSnapshot { iteration, balances, overflows, transfers, changed }
-interface ConvergenceResult { finalBalances, iterations, converged, snapshots, totalRedistributed }
+interface Participant { id, name, emoji, role, value, minThreshold, maxThreshold, allocations[] }
+interface IterationSnapshot { iteration, values, overflows, transfers, changed }
+interface ConvergenceResult { finalValues, iterations, converged, snapshots, totalRedistributed }
 ```
 
 ## Real Participants
@@ -64,7 +64,7 @@ interface ConvergenceResult { finalBalances, iterations, converged, snapshots, t
 | `contracts/src/interfaces/ICFAv1Forwarder.sol` | Minimal Superfluid CFA forwarder interface |
 | `contracts/src/mocks/MockSuperToken.sol` | Configurable mock for unit tests |
 | `contracts/src/mocks/MockCFAv1Forwarder.sol` | Records all stream operations for test assertions |
-| `contracts/test/unit/TBFFNetworkUnit.t.sol` | 17 unit + fuzz tests for TBFFNetwork |
+| `contracts/test/unit/TBFFNetworkUnit.t.sol` | 36 unit + fuzz tests for TBFFNetwork (Phase 3 + Phase 4) |
 | `contracts/test/helpers/SuperfluidSetup.sol` | Fork test base with wallet + deployment setup |
 | `contracts/test/integration/TBFFNetwork.t.sol` | Fork-based integration tests against Base Sepolia |
 | `contracts/script/Deploy.s.sol` | Deploys TBFFNetwork, registers nodes, sets allocations, funds wallets |
@@ -115,14 +115,15 @@ cd web && npm run build   # Production build
 ## On-Chain Architecture
 
 **TBFFNetwork** is a single contract that manages all participants. It:
-1. Reads real-time balances from Superfluid SuperToken
-2. Runs `TBFFMath.converge()` to compute target redistribution
+1. Reads external income rates via `getAccountFlowInfo()`, stripping TBFF's own streams
+2. Runs `TBFFMath.converge()` on income rates (WAD/second) to compute overflow distribution
 3. Creates/updates/deletes CFA streams via `CFAv1Forwarder.setFlowrateFrom()`
+
+Phase 4 (flow-based convergence): values are income rates, not wallet balances. Overflow rate IS the stream rate directly — no epoch division.
 
 **Key constants:**
 - CFAv1Forwarder: `0xcfA132E353cB4E398080B9700609bb008eceB125` (all chains)
 - SuperTokenFactory: `0x7447E94Dfe3d804a9f46Bf12838d467c912C8F6C` (Base Sepolia)
-- Stream epoch: 30 days (overflow streamed over this period)
 - WAD→USD: `Number(wad / BigInt(1e12)) / 1e6`
 <claude-mem-context>
 # Recent Activity

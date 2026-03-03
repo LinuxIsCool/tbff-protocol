@@ -11,7 +11,7 @@ import { converge, type Participant } from "../engine";
 function makeParticipants(
   configs: {
     id: string;
-    balance: number;
+    value: number;
     maxThreshold: number;
     allocations: { target: string; weight: number }[];
   }[]
@@ -32,17 +32,17 @@ describe("Cross-validation: TypeScript matches Solidity", () => {
     // A->B(100%), B->C(100%), C->none
     // Expected: [100, 100, 80], iterations: 3
     const participants = makeParticipants([
-      { id: "a", balance: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
-      { id: "c", balance: 30, maxThreshold: 100, allocations: [] },
+      { id: "a", value: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
+      { id: "c", value: 30, maxThreshold: 100, allocations: [] },
     ]);
 
     const result = converge(participants, 50);
 
     // Solidity outputs (converted from WAD to dollars)
-    expect(result.finalBalances["a"]).toBeCloseTo(100, 2);
-    expect(result.finalBalances["b"]).toBeCloseTo(100, 2);
-    expect(result.finalBalances["c"]).toBeCloseTo(80, 2);
+    expect(result.finalValues["a"]).toBeCloseTo(100, 2);
+    expect(result.finalValues["b"]).toBeCloseTo(100, 2);
+    expect(result.finalValues["c"]).toBeCloseTo(80, 2);
     expect(result.iterations).toBe(3);
     expect(result.converged).toBe(true);
   });
@@ -53,16 +53,16 @@ describe("Cross-validation: TypeScript matches Solidity", () => {
     // A->B(100%), B->C(100%), C->A(100%)
     // Expected: [150, 150, 150], iterations: 1 (fixed point)
     const participants = makeParticipants([
-      { id: "a", balance: 150, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 150, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
-      { id: "c", balance: 150, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
+      { id: "a", value: 150, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 150, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
+      { id: "c", value: 150, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
     ]);
 
     const result = converge(participants, 50);
 
-    expect(result.finalBalances["a"]).toBeCloseTo(150, 2);
-    expect(result.finalBalances["b"]).toBeCloseTo(150, 2);
-    expect(result.finalBalances["c"]).toBeCloseTo(150, 2);
+    expect(result.finalValues["a"]).toBeCloseTo(150, 2);
+    expect(result.finalValues["b"]).toBeCloseTo(150, 2);
+    expect(result.finalValues["c"]).toBeCloseTo(150, 2);
     expect(result.iterations).toBe(1);
     expect(result.converged).toBe(true);
   });
@@ -88,20 +88,20 @@ describe("Cross-validation: TypeScript matches Solidity", () => {
     // Total initial: 610. Total final: 500. Lost: 110 (D's unallocated overflow).
     const participants = makeParticipants([
       {
-        id: "a", balance: 500, maxThreshold: 100,
+        id: "a", value: 500, maxThreshold: 100,
         allocations: [{ target: "b", weight: 0.5 }, { target: "c", weight: 0.5 }],
       },
-      { id: "b", balance: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
-      { id: "c", balance: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
-      { id: "d", balance: 10, maxThreshold: 200, allocations: [] },
+      { id: "b", value: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
+      { id: "c", value: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
+      { id: "d", value: 10, maxThreshold: 200, allocations: [] },
     ]);
 
     const result = converge(participants, 50);
 
-    expect(result.finalBalances["a"]).toBeCloseTo(100, 2);
-    expect(result.finalBalances["b"]).toBeCloseTo(100, 2);
-    expect(result.finalBalances["c"]).toBeCloseTo(100, 2);
-    expect(result.finalBalances["d"]).toBeCloseTo(200, 2);
+    expect(result.finalValues["a"]).toBeCloseTo(100, 2);
+    expect(result.finalValues["b"]).toBeCloseTo(100, 2);
+    expect(result.finalValues["c"]).toBeCloseTo(100, 2);
+    expect(result.finalValues["d"]).toBeCloseTo(200, 2);
     expect(result.converged).toBe(true);
     expect(result.iterations).toBeLessThanOrEqual(4);
   });

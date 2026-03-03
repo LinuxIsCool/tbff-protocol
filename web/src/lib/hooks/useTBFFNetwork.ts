@@ -29,8 +29,9 @@ export function useTBFFNetwork() {
   });
 
   const nodes = networkState?.[0] as Address[] | undefined;
-  const balances = networkState?.[1] as bigint[] | undefined;
+  const values = networkState?.[1] as bigint[] | undefined;
   const thresholds = networkState?.[2] as bigint[] | undefined;
+  const minThresholds = networkState?.[3] as bigint[] | undefined;
 
   const lastSettle = settleData
     ? {
@@ -41,5 +42,5 @@ export function useTBFFNetwork() {
       }
     : undefined;
 
-  return { nodes, balances, thresholds, lastSettle, isLoading, isError, refetch };
+  return { nodes, values, thresholds, minThresholds, lastSettle, isLoading, isError, refetch };
 }

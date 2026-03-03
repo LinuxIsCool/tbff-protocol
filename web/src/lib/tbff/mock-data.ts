@@ -11,7 +11,7 @@ export const mockParticipants: Participant[] = [
     name: "Shawn",
     emoji: "\u{1F332}",
     role: "AI Infrastructure",
-    balance: 6000,
+    value: 6000,
     minThreshold: 3000,
     maxThreshold: 8000,
     allocations: [
@@ -25,7 +25,7 @@ export const mockParticipants: Participant[] = [
     name: "Jeff",
     emoji: "\u{1F527}",
     role: "Protocol Engineering",
-    balance: 5000,
+    value: 5000,
     minThreshold: 3000,
     maxThreshold: 8000,
     allocations: [
@@ -39,7 +39,7 @@ export const mockParticipants: Participant[] = [
     name: "Darren",
     emoji: "\u{26A1}",
     role: "GPU Engineering",
-    balance: 4000,
+    value: 4000,
     minThreshold: 3000,
     maxThreshold: 8000,
     allocations: [
@@ -52,7 +52,7 @@ export const mockParticipants: Participant[] = [
     name: "Simon",
     emoji: "\u{1F3D7}\u{FE0F}",
     role: "Systems Design",
-    balance: 7000,
+    value: 7000,
     minThreshold: 3000,
     maxThreshold: 8000,
     allocations: [
@@ -66,7 +66,7 @@ export const mockParticipants: Participant[] = [
     name: "Christina",
     emoji: "\u{1F310}",
     role: "Network Facilitation",
-    balance: 10000,
+    value: 10000,
     minThreshold: 3000,
     maxThreshold: 8000,
     allocations: [
@@ -80,6 +80,6 @@ export const mockParticipants: Participant[] = [
 
 /** Total initial funding across all participants */
 export const totalInitialFunding = mockParticipants.reduce(
-  (sum, p) => sum + p.balance,
+  (sum, p) => sum + p.value,
   0
 );

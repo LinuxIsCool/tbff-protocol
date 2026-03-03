@@ -25,4 +25,14 @@ export const cfaV1ForwarderAbi = [
     ],
     stateMutability: "view",
   },
+  {
+    type: "function",
+    name: "grantPermissions",
+    inputs: [
+      { name: "token", type: "address" },
+      { name: "flowOperator", type: "address" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
 ] as const;

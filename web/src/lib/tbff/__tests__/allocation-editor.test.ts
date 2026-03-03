@@ -121,24 +121,24 @@ describe("Normalized allocations preserve conservation in engine", () => {
     const participants: Participant[] = [
       {
         id: "a", name: "A", emoji: "", role: "",
-        balance: 200, minThreshold: 0, maxThreshold: 100,
+        value: 200, minThreshold: 0, maxThreshold: 100,
         allocations: normalized,
       },
       {
         id: "b", name: "B", emoji: "", role: "",
-        balance: 50, minThreshold: 0, maxThreshold: 100,
+        value: 50, minThreshold: 0, maxThreshold: 100,
         allocations: [{ target: "c", weight: 1 }],
       },
       {
         id: "c", name: "C", emoji: "", role: "",
-        balance: 30, minThreshold: 0, maxThreshold: 100,
+        value: 30, minThreshold: 0, maxThreshold: 100,
         allocations: [],
       },
     ];
 
-    const initialSum = participants.reduce((s, p) => s + p.balance, 0);
+    const initialSum = participants.reduce((s, p) => s + p.value, 0);
     const result = converge(participants);
-    const finalSum = Object.values(result.finalBalances).reduce((a, b) => a + b, 0);
+    const finalSum = Object.values(result.finalValues).reduce((a, b) => a + b, 0);
 
     expect(Math.abs(finalSum - initialSum)).toBeLessThan(0.01);
   });
@@ -149,14 +149,14 @@ describe("Empty allocations don't break engine", () => {
     const participants: Participant[] = [
       {
         id: "a", name: "A", emoji: "", role: "",
-        balance: 200, minThreshold: 0, maxThreshold: 100,
+        value: 200, minThreshold: 0, maxThreshold: 100,
         allocations: [],
       },
     ];
 
     const result = converge(participants);
     // Balance capped at threshold, overflow lost
-    expect(result.finalBalances["a"]).toBe(100);
+    expect(result.finalValues["a"]).toBe(100);
     expect(result.converged).toBe(true);
   });
 });

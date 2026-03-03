@@ -25,22 +25,22 @@ export default function SimulatorPage() {
   const [snapshots, setSnapshots] = useState<IterationSnapshot[]>([]);
   const [converged, setConverged] = useState(false);
   const [totalRedistributed, setTotalRedistributed] = useState(0);
-  const initialBalancesRef = useRef<Record<string, number>>({});
+  const initialValuesRef = useRef<Record<string, number>>({});
 
-  // Fix 5: Memoize currentBalances to avoid invalidating useCallback deps
-  const currentBalances = useMemo(() => {
-    const balances: Record<string, number> = {};
+  // Fix 5: Memoize currentValues to avoid invalidating useCallback deps
+  const currentValues = useMemo(() => {
+    const vals: Record<string, number> = {};
     if (snapshots.length > 0) {
       const last = snapshots[snapshots.length - 1];
       for (const p of participants) {
-        balances[p.id] = last.balances[p.id] ?? p.balance;
+        vals[p.id] = last.values[p.id] ?? p.value;
       }
     } else {
       for (const p of participants) {
-        balances[p.id] = p.balance;
+        vals[p.id] = p.value;
       }
     }
-    return balances;
+    return vals;
   }, [participants, snapshots]);
 
   // Fix 6: Extract shared reset logic
@@ -48,27 +48,27 @@ export default function SimulatorPage() {
     setSnapshots([]);
     setConverged(false);
     setTotalRedistributed(0);
-    initialBalancesRef.current = {};
+    initialValuesRef.current = {};
   }, []);
 
-  // Seed initial balances on first interaction
-  const seedInitialBalances = useCallback(() => {
-    if (Object.keys(initialBalancesRef.current).length === 0) {
-      initialBalancesRef.current = Object.fromEntries(
-        participants.map((p) => [p.id, p.balance])
+  // Seed initial values on first interaction
+  const seedInitialValues = useCallback(() => {
+    if (Object.keys(initialValuesRef.current).length === 0) {
+      initialValuesRef.current = Object.fromEntries(
+        participants.map((p) => [p.id, p.value])
       );
     }
   }, [participants]);
 
   const handleNextIteration = useCallback(() => {
-    seedInitialBalances();
+    seedInitialValues();
     const currentParticipants = participants.map((p) => ({
       ...p,
-      balance: currentBalances[p.id] ?? p.balance,
+      value: currentValues[p.id] ?? p.value,
     }));
 
     const iterNum = snapshots.length + 1;
-    const { newBalances, changed, snapshot } = iterateOnce(
+    const { newValues, changed, snapshot } = iterateOnce(
       currentParticipants,
       iterNum
     );
@@ -80,19 +80,19 @@ export default function SimulatorPage() {
     }
 
     setParticipants((prev) =>
-      prev.map((p) => ({ ...p, balance: newBalances[p.id] ?? p.balance }))
+      prev.map((p) => ({ ...p, value: newValues[p.id] ?? p.value }))
     );
 
     const iterRedist = snapshot.transfers.reduce((s, t) => s + t.amount, 0);
     setTotalRedistributed((prev) => prev + iterRedist);
-  }, [participants, snapshots, currentBalances, seedInitialBalances]);
+  }, [participants, snapshots, currentValues, seedInitialValues]);
 
   const handleRunAll = useCallback(() => {
-    seedInitialBalances();
+    seedInitialValues();
     const result = converge(
       participants.map((p) => ({
         ...p,
-        balance: initialBalancesRef.current[p.id] ?? p.balance,
+        value: initialValuesRef.current[p.id] ?? p.value,
       })),
       50
     );
@@ -104,10 +104,10 @@ export default function SimulatorPage() {
     setParticipants((prev) =>
       prev.map((p) => ({
         ...p,
-        balance: result.finalBalances[p.id] ?? p.balance,
+        value: result.finalValues[p.id] ?? p.value,
       }))
     );
-  }, [participants, seedInitialBalances]);
+  }, [participants, seedInitialValues]);
 
   const handleReset = useCallback(() => {
     setParticipants(mockParticipants.map((p) => ({ ...p })));
@@ -119,7 +119,7 @@ export default function SimulatorPage() {
       const num = parseFloat(value);
       if (isNaN(num)) return;
       setParticipants((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, balance: num } : p))
+        prev.map((p) => (p.id === id ? { ...p, value: num } : p))
       );
       resetSimulationState();
     },
@@ -148,7 +148,7 @@ export default function SimulatorPage() {
     [resetSimulationState]
   );
 
-  const totalFunding = participants.reduce((s, p) => s + p.balance, 0);
+  const totalFunding = participants.reduce((s, p) => s + p.value, 0);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -206,8 +206,8 @@ export default function SimulatorPage() {
                       type="number"
                       value={
                         snapshots.length === 0
-                          ? p.balance
-                          : initialBalancesRef.current[p.id] ?? p.balance
+                          ? p.value
+                          : initialValuesRef.current[p.id] ?? p.value
                       }
                       onChange={(e) =>
                         handleBalanceChange(p.id, e.target.value)
@@ -274,7 +274,7 @@ export default function SimulatorPage() {
           <CardContent>
             <NetworkGraph
               participants={participants}
-              currentBalances={currentBalances}
+              currentValues={currentValues}
             />
             {snapshots.length > 0 && (
               <div className="mt-4 grid grid-cols-3 gap-4 text-center text-sm">
@@ -310,10 +310,10 @@ export default function SimulatorPage() {
             <DataTable
               participants={participants}
               snapshots={snapshots}
-              initialBalances={
-                Object.keys(initialBalancesRef.current).length > 0
-                  ? initialBalancesRef.current
-                  : Object.fromEntries(participants.map((p) => [p.id, p.balance]))
+              initialValues={
+                Object.keys(initialValuesRef.current).length > 0
+                  ? initialValuesRef.current
+                  : Object.fromEntries(participants.map((p) => [p.id, p.value]))
               }
             />
           </CardContent>

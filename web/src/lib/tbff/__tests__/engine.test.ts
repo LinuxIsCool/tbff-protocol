@@ -8,14 +8,14 @@ import {
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function sumBalances(balances: Record<string, number>): number {
-  return Object.values(balances).reduce((a, b) => a + b, 0);
+function sumValues(values: Record<string, number>): number {
+  return Object.values(values).reduce((a, b) => a + b, 0);
 }
 
 function makeParticipants(
   configs: {
     id: string;
-    balance: number;
+    value: number;
     maxThreshold: number;
     allocations: { target: string; weight: number }[];
   }[]
@@ -64,79 +64,79 @@ describe("computeOverflow", () => {
 describe("converge", () => {
   it("underfunded scenario: no redistribution needed", () => {
     const participants = makeParticipants([
-      { id: "a", balance: 50, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 70, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
+      { id: "a", value: 50, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 70, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
     ]);
 
     const result = converge(participants);
 
-    expect(result.finalBalances["a"]).toBe(50);
-    expect(result.finalBalances["b"]).toBe(70);
+    expect(result.finalValues["a"]).toBe(50);
+    expect(result.finalValues["b"]).toBe(70);
     expect(result.converged).toBe(true);
     expect(result.iterations).toBe(1);
   });
 
   it("exact funding: zero overflow", () => {
     const participants = makeParticipants([
-      { id: "a", balance: 100, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 100, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
+      { id: "a", value: 100, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 100, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
     ]);
 
     const result = converge(participants);
 
-    expect(result.finalBalances["a"]).toBe(100);
-    expect(result.finalBalances["b"]).toBe(100);
+    expect(result.finalValues["a"]).toBe(100);
+    expect(result.finalValues["b"]).toBe(100);
     expect(result.converged).toBe(true);
     expect(result.iterations).toBe(1);
   });
 
   it("overfunded linear chain: A->B->C", () => {
     const participants = makeParticipants([
-      { id: "a", balance: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
-      { id: "c", balance: 30, maxThreshold: 100, allocations: [] },
+      { id: "a", value: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
+      { id: "c", value: 30, maxThreshold: 100, allocations: [] },
     ]);
 
     const result = converge(participants);
 
-    expect(result.finalBalances["a"]).toBe(100);
-    expect(result.finalBalances["b"]).toBe(100);
-    expect(result.finalBalances["c"]).toBe(80);
+    expect(result.finalValues["a"]).toBe(100);
+    expect(result.finalValues["b"]).toBe(100);
+    expect(result.finalValues["c"]).toBe(80);
     expect(result.converged).toBe(true);
     expect(result.iterations).toBe(3);
 
     // Conservation
-    expect(sumBalances(result.finalBalances)).toBeCloseTo(280, 2);
+    expect(sumValues(result.finalValues)).toBeCloseTo(280, 2);
   });
 
   it("circular allocations: A->B->C->A converges", () => {
     const participants = makeParticipants([
-      { id: "a", balance: 150, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 150, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
-      { id: "c", balance: 150, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
+      { id: "a", value: 150, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 150, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
+      { id: "c", value: 150, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
     ]);
 
     const result = converge(participants);
 
     // Circular: overflow recirculates, reaches fixed point in 1 iteration
-    expect(result.finalBalances["a"]).toBeCloseTo(150, 2);
-    expect(result.finalBalances["b"]).toBeCloseTo(150, 2);
-    expect(result.finalBalances["c"]).toBeCloseTo(150, 2);
+    expect(result.finalValues["a"]).toBeCloseTo(150, 2);
+    expect(result.finalValues["b"]).toBeCloseTo(150, 2);
+    expect(result.finalValues["c"]).toBeCloseTo(150, 2);
     expect(result.converged).toBe(true);
     expect(result.iterations).toBe(1);
 
     // Conservation
-    expect(sumBalances(result.finalBalances)).toBeCloseTo(450, 2);
+    expect(sumValues(result.finalValues)).toBeCloseTo(450, 2);
   });
 
   it("self-allocation: funds don't multiply", () => {
     const participants = makeParticipants([
-      { id: "a", balance: 200, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
+      { id: "a", value: 200, maxThreshold: 100, allocations: [{ target: "a", weight: 1 }] },
     ]);
 
     const result = converge(participants);
 
-    expect(result.finalBalances["a"]).toBeCloseTo(200, 2);
+    expect(result.finalValues["a"]).toBeCloseTo(200, 2);
     expect(result.converged).toBe(true);
     expect(result.iterations).toBe(1);
   });
@@ -145,26 +145,26 @@ describe("converge", () => {
     // All nodes must have allocations for conservation to hold
     const participants = makeParticipants([
       {
-        id: "a", balance: 300, maxThreshold: 100,
+        id: "a", value: 300, maxThreshold: 100,
         allocations: [{ target: "b", weight: 0.5 }, { target: "c", weight: 0.5 }],
       },
       {
-        id: "b", balance: 200, maxThreshold: 150,
+        id: "b", value: 200, maxThreshold: 150,
         allocations: [{ target: "c", weight: 0.7 }, { target: "d", weight: 0.3 }],
       },
       {
-        id: "c", balance: 50, maxThreshold: 100,
+        id: "c", value: 50, maxThreshold: 100,
         allocations: [{ target: "d", weight: 1 }],
       },
       {
-        id: "d", balance: 10, maxThreshold: 80,
+        id: "d", value: 10, maxThreshold: 80,
         allocations: [{ target: "a", weight: 0.5 }, { target: "b", weight: 0.5 }],
       },
     ]);
 
-    const initialSum = participants.reduce((s, p) => s + p.balance, 0);
+    const initialSum = participants.reduce((s, p) => s + p.value, 0);
     const result = converge(participants);
-    const finalSum = sumBalances(result.finalBalances);
+    const finalSum = sumValues(result.finalValues);
 
     // Conservation: within $0.01
     expect(Math.abs(finalSum - initialSum)).toBeLessThan(0.01);
@@ -172,16 +172,16 @@ describe("converge", () => {
 
   it("all below threshold after convergence (linear topology)", () => {
     const participants = makeParticipants([
-      { id: "a", balance: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
-      { id: "c", balance: 30, maxThreshold: 100, allocations: [] },
+      { id: "a", value: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
+      { id: "c", value: 30, maxThreshold: 100, allocations: [] },
     ]);
 
     const result = converge(participants);
 
     // In a linear (non-circular) topology, all final balances <= threshold
     for (const p of participants) {
-      expect(result.finalBalances[p.id]).toBeLessThanOrEqual(p.maxThreshold + 0.01);
+      expect(result.finalValues[p.id]).toBeLessThanOrEqual(p.maxThreshold + 0.01);
     }
   });
 
@@ -189,12 +189,12 @@ describe("converge", () => {
     // Diamond topology: A -> B,C -> D
     const participants = makeParticipants([
       {
-        id: "a", balance: 500, maxThreshold: 100,
+        id: "a", value: 500, maxThreshold: 100,
         allocations: [{ target: "b", weight: 0.5 }, { target: "c", weight: 0.5 }],
       },
-      { id: "b", balance: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
-      { id: "c", balance: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
-      { id: "d", balance: 10, maxThreshold: 200, allocations: [] },
+      { id: "b", value: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
+      { id: "c", value: 50, maxThreshold: 100, allocations: [{ target: "d", weight: 1 }] },
+      { id: "d", value: 10, maxThreshold: 200, allocations: [] },
     ]);
 
     const result = converge(participants, 50);
@@ -206,37 +206,37 @@ describe("converge", () => {
   it("empty network: returns empty result", () => {
     const result = converge([]);
 
-    expect(Object.keys(result.finalBalances)).toHaveLength(0);
+    expect(Object.keys(result.finalValues)).toHaveLength(0);
     expect(result.converged).toBe(true);
     expect(result.iterations).toBe(1);
   });
 
   it("single participant with no allocations", () => {
     const participants = makeParticipants([
-      { id: "a", balance: 500, maxThreshold: 100, allocations: [] },
+      { id: "a", value: 500, maxThreshold: 100, allocations: [] },
     ]);
 
     const result = converge(participants);
 
     // Capped at threshold, overflow lost (no allocations)
-    expect(result.finalBalances["a"]).toBe(100);
+    expect(result.finalValues["a"]).toBe(100);
     expect(result.converged).toBe(true);
   });
 
   it("matches Solidity known outputs: linear chain", () => {
     // Same scenario as test_threeNodeConvergence in Solidity
     const participants = makeParticipants([
-      { id: "a", balance: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
-      { id: "b", balance: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
-      { id: "c", balance: 30, maxThreshold: 100, allocations: [] },
+      { id: "a", value: 200, maxThreshold: 100, allocations: [{ target: "b", weight: 1 }] },
+      { id: "b", value: 50, maxThreshold: 100, allocations: [{ target: "c", weight: 1 }] },
+      { id: "c", value: 30, maxThreshold: 100, allocations: [] },
     ]);
 
     const result = converge(participants, 50);
 
     // These values match the Solidity test exactly
-    expect(result.finalBalances["a"]).toBe(100);
-    expect(result.finalBalances["b"]).toBe(100);
-    expect(result.finalBalances["c"]).toBe(80);
+    expect(result.finalValues["a"]).toBe(100);
+    expect(result.finalValues["b"]).toBe(100);
+    expect(result.finalValues["c"]).toBe(80);
     expect(result.iterations).toBe(3);
   });
 });
