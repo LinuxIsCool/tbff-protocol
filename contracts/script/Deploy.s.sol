@@ -12,7 +12,6 @@ import {ISuperToken} from "../src/interfaces/ISuperToken.sol";
 ///   Sepolia: forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --broadcast --verify
 contract DeployScript is Script {
     uint256 internal constant WAD = 1e18;
-    uint256 internal constant STREAM_EPOCH = 30 days;
     uint256 internal constant THRESHOLD = 8000 * WAD;
     uint256 internal constant MIN_THRESH = 3000 * WAD;
 
@@ -33,7 +32,7 @@ contract DeployScript is Script {
         vm.startBroadcast(deployerKey);
 
         // 1. Deploy TBFFNetwork
-        TBFFNetwork network = new TBFFNetwork(CFA_FORWARDER, superTokenAddr, STREAM_EPOCH);
+        TBFFNetwork network = new TBFFNetwork(CFA_FORWARDER, superTokenAddr);
         console2.log("TBFFNetwork deployed at:", address(network));
 
         // 2. Register 5 Mycopunks
@@ -131,6 +130,6 @@ contract DeployScript is Script {
         console2.log("Network:", address(network));
         console2.log("Token:", superTokenAddr);
         console2.log("Forwarder:", CFA_FORWARDER);
-        console2.log("Epoch:", STREAM_EPOCH, "seconds");
+        console2.log("Mode: flow-based convergence");
     }
 }

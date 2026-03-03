@@ -13,15 +13,15 @@ import type { Participant, IterationSnapshot } from "@/lib/tbff/engine";
 interface DataTableProps {
   participants: Participant[];
   snapshots: IterationSnapshot[];
-  initialBalances: Record<string, number>;
+  initialValues: Record<string, number>;
 }
 
 export default function DataTable({
   participants,
   snapshots,
-  initialBalances,
+  initialValues,
 }: DataTableProps) {
-  const totalInitial = Object.values(initialBalances).reduce((a, b) => a + b, 0);
+  const totalInitial = Object.values(initialValues).reduce((a, b) => a + b, 0);
 
   return (
     <div className="overflow-x-auto">
@@ -44,10 +44,10 @@ export default function DataTable({
         </TableHeader>
         <TableBody>
           {participants.map((p) => {
-            const initial = initialBalances[p.id] ?? p.balance;
+            const initial = initialValues[p.id] ?? p.value;
             const final =
               snapshots.length > 0
-                ? snapshots[snapshots.length - 1].balances[p.id] ?? initial
+                ? snapshots[snapshots.length - 1].values[p.id] ?? initial
                 : initial;
             const delta = final - initial;
 
@@ -60,11 +60,11 @@ export default function DataTable({
                   ${initial.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                 </TableCell>
                 {snapshots.map((s, si) => {
-                  const bal = s.balances[p.id] ?? 0;
+                  const bal = s.values[p.id] ?? 0;
                   const prevBal =
                     si === 0
                       ? initial
-                      : snapshots[si - 1].balances[p.id] ?? 0;
+                      : snapshots[si - 1].values[p.id] ?? 0;
                   const changed = Math.abs(bal - prevBal) > 0.01;
 
                   return (
@@ -105,7 +105,7 @@ export default function DataTable({
               ${totalInitial.toLocaleString(undefined, { maximumFractionDigits: 0 })}
             </TableCell>
             {snapshots.map((s) => {
-              const total = Object.values(s.balances).reduce((a, b) => a + b, 0);
+              const total = Object.values(s.values).reduce((a, b) => a + b, 0);
               // Tolerance matches display rounding (integer dollars)
               const conserved = Math.abs(total - totalInitial) < 1.0;
               return (

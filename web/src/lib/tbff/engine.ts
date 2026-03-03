@@ -20,8 +20,8 @@ export interface Participant {
   name: string;
   emoji: string;
   role: string;
-  balance: number;
-  minThreshold: number; // overflow gate: no redistribution if balance < minThreshold
+  value: number; // dimensionally agnostic: balance ($) or income rate ($/second)
+  minThreshold: number; // overflow gate: no redistribution if value < minThreshold
   maxThreshold: number; // used by the equation
   allocations: Allocation[];
 }
@@ -34,14 +34,14 @@ export interface Transfer {
 
 export interface IterationSnapshot {
   iteration: number;
-  balances: Record<string, number>;
+  values: Record<string, number>;
   overflows: Record<string, number>;
   transfers: Transfer[];
   changed: boolean;
 }
 
 export interface ConvergenceResult {
-  finalBalances: Record<string, number>;
+  finalValues: Record<string, number>;
   iterations: number;
   converged: boolean;
   snapshots: IterationSnapshot[];
@@ -52,12 +52,12 @@ export interface ConvergenceResult {
 
 const EPSILON = 1e-10; // floating-point comparison tolerance
 
-export function capToThreshold(balance: number, threshold: number): number {
-  return Math.min(balance, threshold);
+export function capToThreshold(value: number, threshold: number): number {
+  return Math.min(value, threshold);
 }
 
-export function computeOverflow(balance: number, threshold: number): number {
-  return Math.max(0, balance - threshold);
+export function computeOverflow(value: number, threshold: number): number {
+  return Math.max(0, value - threshold);
 }
 
 /**
@@ -103,18 +103,18 @@ export function distributeOverflow(
 export function iterateOnce(
   participants: Participant[],
   iterationNum: number
-): { newBalances: Record<string, number>; changed: boolean; snapshot: IterationSnapshot } {
-  const newBalances: Record<string, number> = {};
+): { newValues: Record<string, number>; changed: boolean; snapshot: IterationSnapshot } {
+  const newValues: Record<string, number> = {};
   const overflows: Record<string, number> = {};
   const transfers: Transfer[] = [];
 
-  // Phase 1: Cap all balances and compute overflow
+  // Phase 1: Cap all values and compute overflow
   // Note: minThreshold gate is NOT applied here — it lives in the stream/display
   // layer only (mirrors Solidity: TBFFMath has no minThreshold, gate is in
   // _applyRedistribution). This preserves the Engine Mirror Pattern.
   for (const p of participants) {
-    newBalances[p.id] = capToThreshold(p.balance, p.maxThreshold);
-    overflows[p.id] = computeOverflow(p.balance, p.maxThreshold);
+    newValues[p.id] = capToThreshold(p.value, p.maxThreshold);
+    overflows[p.id] = computeOverflow(p.value, p.maxThreshold);
   }
 
   // Phase 2: Distribute overflows
@@ -123,7 +123,7 @@ export function iterateOnce(
     if (overflow > EPSILON && p.allocations.length > 0) {
       const { amounts, transfers: t } = distributeOverflow(overflow, p.id, p.allocations);
       for (const [target, amount] of Object.entries(amounts)) {
-        newBalances[target] = (newBalances[target] ?? 0) + amount;
+        newValues[target] = (newValues[target] ?? 0) + amount;
       }
       transfers.push(...t);
     }
@@ -132,18 +132,18 @@ export function iterateOnce(
   // Check if anything changed
   let changed = false;
   for (const p of participants) {
-    if (Math.abs(newBalances[p.id] - p.balance) > EPSILON) {
+    if (Math.abs(newValues[p.id] - p.value) > EPSILON) {
       changed = true;
       break;
     }
   }
 
   return {
-    newBalances,
+    newValues,
     changed,
     snapshot: {
       iteration: iterationNum,
-      balances: { ...newBalances },
+      values: { ...newValues },
       overflows: { ...overflows },
       transfers,
       changed,
@@ -165,7 +165,7 @@ export function converge(
   let current = participants.map((p) => ({ ...p }));
 
   for (let iter = 1; iter <= maxIterations; iter++) {
-    const { newBalances, changed, snapshot } = iterateOnce(current, iter);
+    const { newValues, changed, snapshot } = iterateOnce(current, iter);
     snapshots.push(snapshot);
 
     // Sum redistribution
@@ -173,19 +173,19 @@ export function converge(
       totalRedistributed += t.amount;
     }
 
-    // Update current balances for next iteration
+    // Update current values for next iteration
     current = current.map((p) => ({
       ...p,
-      balance: newBalances[p.id],
+      value: newValues[p.id],
     }));
 
     if (!changed) {
-      const finalBalances: Record<string, number> = {};
+      const finalValues: Record<string, number> = {};
       for (const p of current) {
-        finalBalances[p.id] = p.balance;
+        finalValues[p.id] = p.value;
       }
       return {
-        finalBalances,
+        finalValues,
         iterations: iter,
         converged: true,
         snapshots,
@@ -195,12 +195,12 @@ export function converge(
   }
 
   // Hit max iterations
-  const finalBalances: Record<string, number> = {};
+  const finalValues: Record<string, number> = {};
   for (const p of current) {
-    finalBalances[p.id] = p.balance;
+    finalValues[p.id] = p.value;
   }
   return {
-    finalBalances,
+    finalValues,
     iterations: maxIterations,
     converged: false,
     snapshots,

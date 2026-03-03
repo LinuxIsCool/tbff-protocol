@@ -28,7 +28,7 @@ interface ProfileInfo {
 
 interface NetworkData {
   nodes: string[];
-  balances: string[];
+  values: string[];
   thresholds: string[];
   nodeCount: number;
   streams: { from: string; to: string; rate: string }[];
@@ -135,13 +135,13 @@ export default function LivePage() {
 
   // Bridge API data to Participant[] for NetworkGraph
   const participants: Participant[] = [];
-  const currentBalances: Record<string, number> = {};
+  const currentValues: Record<string, number> = {};
   const profiles = data?.profiles ?? [];
   if (data) {
     for (let i = 0; i < data.nodes.length; i++) {
       const addr = data.nodes[i];
       const meta = getNodeMeta(addr, profiles);
-      const bal = Number(data.balances[i]);
+      const bal = Number(data.values[i]);
       const thresh = Number(data.thresholds[i]);
       const minThresh = Number(data.minThresholds?.[i] ?? 0);
 
@@ -150,12 +150,12 @@ export default function LivePage() {
         name: meta.name,
         emoji: meta.emoji,
         role: meta.role,
-        balance: bal,
+        value: bal,
         minThreshold: minThresh,
         maxThreshold: thresh,
         allocations: [],
       });
-      currentBalances[meta.id] = bal;
+      currentValues[meta.id] = bal;
     }
   }
 
@@ -251,7 +251,7 @@ export default function LivePage() {
             <CardContent>
               <NetworkGraph
                 participants={participants}
-                currentBalances={currentBalances}
+                currentValues={currentValues}
               />
 
               {settleResult && (
@@ -314,7 +314,7 @@ export default function LivePage() {
                   <tbody>
                     {data?.nodes.map((addr, i) => {
                       const meta = getNodeMeta(addr, profiles);
-                      const bal = Number(data.balances[i]);
+                      const bal = Number(data.values[i]);
                       const thresh = Number(data.thresholds[i]);
                       const flow = Number(data.overflow?.[i] ?? 0);
                       const minThresh = Number(data.minThresholds?.[i] ?? 0);
@@ -329,7 +329,7 @@ export default function LivePage() {
                             </div>
                             <FlowThroughDisplay
                               overflow={flow}
-                              balance={bal}
+                              value={bal}
                               threshold={thresh}
                             />
                           </td>
@@ -436,7 +436,7 @@ export default function LivePage() {
                       $
                       {data
                         ? Math.round(
-                            data.balances.reduce((sum, b) => sum + Number(b), 0)
+                            data.values.reduce((sum, b) => sum + Number(b), 0)
                           ).toLocaleString()
                         : "\u{2014}"}
                     </span>

@@ -14,19 +14,19 @@ contract TestSetup is Test {
 
     /// @dev Build a NetworkState from arrays. Validates lengths.
     function buildNetworkState(
-        uint256[] memory balances,
+        uint256[] memory values,
         uint256[] memory thresholds,
         uint256[] memory allocTargets,
         uint96[] memory allocWeights,
         uint256[] memory allocOffsets
     ) internal pure returns (TBFFMath.NetworkState memory) {
-        require(balances.length == thresholds.length, "length mismatch: balances/thresholds");
-        require(allocOffsets.length == balances.length + 1, "length mismatch: allocOffsets");
+        require(values.length == thresholds.length, "length mismatch: values/thresholds");
+        require(allocOffsets.length == values.length + 1, "length mismatch: allocOffsets");
         require(allocTargets.length == allocWeights.length, "length mismatch: targets/weights");
 
         return TBFFMath.NetworkState({
-            n: balances.length,
-            balances: balances,
+            n: values.length,
+            values: values,
             thresholds: thresholds,
             allocTargets: allocTargets,
             allocWeights: allocWeights,

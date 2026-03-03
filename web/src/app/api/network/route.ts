@@ -69,7 +69,7 @@ export async function GET() {
       }),
     ]);
 
-    const [nodes, balances, thresholds, minThresholds] = networkState as [
+    const [nodes, values, thresholds, minThresholds] = networkState as [
       `0x${string}`[],
       bigint[],
       bigint[],
@@ -93,7 +93,7 @@ export async function GET() {
 
     return NextResponse.json({
       nodes,
-      balances: balances.map((b) => formatUnits(b, 18)),
+      values: values.map((b) => formatUnits(b, 18)),
       thresholds: thresholds.map((t) => formatUnits(t, 18)),
       minThresholds: minThresholds.map((t) => formatUnits(t, 18)),
       nodeCount: Number(nodeCount),

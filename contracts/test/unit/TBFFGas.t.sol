@@ -11,14 +11,14 @@ contract TBFFGas is TestSetup {
     ///      Deterministic: uses node index for "random" targets.
     function _buildNetwork(
         uint256 n,
-        uint256 balancePerNode,
+        uint256 valuePerNode,
         uint256 threshold
     ) internal pure returns (TBFFMath.NetworkState memory) {
-        uint256[] memory balances = new uint256[](n);
+        uint256[] memory values = new uint256[](n);
         uint256[] memory thresholds = new uint256[](n);
 
         for (uint256 i; i < n;) {
-            balances[i] = balancePerNode;
+            values[i] = valuePerNode;
             thresholds[i] = threshold;
             unchecked { ++i; }
         }
@@ -47,7 +47,7 @@ contract TBFFGas is TestSetup {
 
         return TBFFMath.NetworkState({
             n: n,
-            balances: balances,
+            values: values,
             thresholds: thresholds,
             allocTargets: allocTargets,
             allocWeights: allocWeights,

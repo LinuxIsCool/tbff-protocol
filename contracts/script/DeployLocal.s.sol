@@ -11,7 +11,6 @@ import {MockCFAv1Forwarder} from "../src/mocks/MockCFAv1Forwarder.sol";
 ///         No real Superfluid needed.
 contract DeployLocalScript is Script {
     uint256 internal constant WAD = 1e18;
-    uint256 internal constant STREAM_EPOCH = 30 days;
     uint256 internal constant THRESHOLD = 8000 * WAD;
     uint256 internal constant MIN_THRESH = 3000 * WAD;
 
@@ -38,7 +37,7 @@ contract DeployLocalScript is Script {
         token.setBalance(deployer, 200_000 * WAD);
 
         // 3. Deploy TBFFNetwork
-        TBFFNetwork network = new TBFFNetwork(address(forwarder), address(token), STREAM_EPOCH);
+        TBFFNetwork network = new TBFFNetwork(address(forwarder), address(token));
         console2.log("TBFFNetwork:", address(network));
 
         // 4. Register 5 Mycopunks

@@ -4,16 +4,16 @@ import type { Participant } from "@/lib/tbff/engine";
 
 interface NetworkGraphProps {
   participants: Participant[];
-  currentBalances?: Record<string, number>;
+  currentValues?: Record<string, number>;
 }
 
-function getNodeColor(balance: number, maxThreshold: number): string {
-  if (balance > maxThreshold) return "#ef4444"; // red: overflowing
-  if (balance > maxThreshold * 0.8) return "#eab308"; // yellow: approaching
+function getNodeColor(value: number, maxThreshold: number): string {
+  if (value > maxThreshold) return "#ef4444"; // red: overflowing
+  if (value > maxThreshold * 0.8) return "#eab308"; // yellow: approaching
   return "#22c55e"; // green: healthy
 }
 
-export default function NetworkGraph({ participants, currentBalances }: NetworkGraphProps) {
+export default function NetworkGraph({ participants, currentValues }: NetworkGraphProps) {
   const n = participants.length;
   if (n === 0) return null;
 
@@ -99,7 +99,7 @@ export default function NetworkGraph({ participants, currentBalances }: NetworkG
       {/* Nodes */}
       {participants.map((p, i) => {
         const pos = positions[i];
-        const bal = currentBalances?.[p.id] ?? p.balance;
+        const bal = currentValues?.[p.id] ?? p.value;
         const r = nodeRadii[i];
         const color = getNodeColor(bal, p.maxThreshold);
 

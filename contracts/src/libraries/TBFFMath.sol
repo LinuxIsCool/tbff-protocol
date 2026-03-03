@@ -22,21 +22,21 @@ library TBFFMath {
     ///      Node i's allocations span allocTargets[allocOffsets[i]..allocOffsets[i+1]].
     struct NetworkState {
         uint256 n;
-        uint256[] balances;
+        uint256[] values;
         uint256[] thresholds;
         uint256[] allocTargets;  // flat list of target node indices
         uint96[] allocWeights;   // parallel array of WAD weights
         uint256[] allocOffsets;  // length n+1: offsets into allocTargets/allocWeights
     }
 
-    /// @notice Cap a balance to its threshold: min(balance, threshold).
-    function capToThreshold(uint256 balance, uint256 threshold) internal pure returns (uint256) {
-        return balance < threshold ? balance : threshold;
+    /// @notice Cap a value to its threshold: min(value, threshold).
+    function capToThreshold(uint256 value, uint256 threshold) internal pure returns (uint256) {
+        return value < threshold ? value : threshold;
     }
 
-    /// @notice Compute overflow above threshold: max(0, balance - threshold).
-    function computeOverflow(uint256 balance, uint256 threshold) internal pure returns (uint256) {
-        return balance > threshold ? balance - threshold : 0;
+    /// @notice Compute overflow above threshold: max(0, value - threshold).
+    function computeOverflow(uint256 value, uint256 threshold) internal pure returns (uint256) {
+        return value > threshold ? value - threshold : 0;
     }
 
     /// @notice Distribute overflow according to WAD weights.
@@ -72,25 +72,25 @@ library TBFFMath {
 
     /// @notice Execute one full pass of the TBFF equation across all nodes.
     /// @dev For each node with overflow, distributes it to allocation targets.
-    ///      Does NOT mutate state.balances — returns a new array.
+    ///      Does NOT mutate state.values — returns a new array.
     /// @param state The full network state (CSR format).
-    /// @return newBalances The updated balances after one iteration.
-    /// @return changed True if any balance changed (within 1 wei tolerance).
+    /// @return newValues The updated values after one iteration.
+    /// @return changed True if any value changed (within 1 wei tolerance).
     function iterateOnce(
         NetworkState memory state
-    ) internal pure returns (uint256[] memory newBalances, bool changed) {
+    ) internal pure returns (uint256[] memory newValues, bool changed) {
         uint256 n = state.n;
-        newBalances = new uint256[](n);
+        newValues = new uint256[](n);
 
-        // Phase 1: Cap all balances to thresholds
+        // Phase 1: Cap all values to thresholds
         for (uint256 i; i < n;) {
-            newBalances[i] = capToThreshold(state.balances[i], state.thresholds[i]);
+            newValues[i] = capToThreshold(state.values[i], state.thresholds[i]);
             unchecked { ++i; }
         }
 
         // Phase 2: Distribute overflows
         for (uint256 i; i < n;) {
-            uint256 overflow = computeOverflow(state.balances[i], state.thresholds[i]);
+            uint256 overflow = computeOverflow(state.values[i], state.thresholds[i]);
             if (overflow > 0) {
                 uint256 start = state.allocOffsets[i];
                 uint256 end = state.allocOffsets[i + 1];
@@ -108,7 +108,7 @@ library TBFFMath {
 
                     for (uint256 j; j < allocLen;) {
                         uint256 target = state.allocTargets[start + j];
-                        newBalances[target] += amounts[j];
+                        newValues[target] += amounts[j];
                         unchecked { ++j; }
                     }
                 }
@@ -121,7 +121,7 @@ library TBFFMath {
 
         // Check if anything changed (tolerance: 0 — exact match required)
         for (uint256 i; i < n;) {
-            if (newBalances[i] != state.balances[i]) {
+            if (newValues[i] != state.values[i]) {
                 changed = true;
                 break;
             }
@@ -130,37 +130,40 @@ library TBFFMath {
     }
 
     /// @notice Iterate the TBFF equation until convergence or max iterations.
-    /// @param state The full network state. balances[] will NOT be mutated.
+    /// @dev The original values array passed in via state is not mutated (contents preserved).
+    ///      However, state.values is reassigned internally to point at successive iteration
+    ///      results. Callers should not rely on state.values after this call.
+    /// @param state The full network state (working copy — state.values will be redirected).
     /// @param maxIterations Safety cap on iterations.
-    /// @return finalBalances The converged balances.
+    /// @return finalValues The converged values.
     /// @return iterations Number of iterations executed.
     function converge(
         NetworkState memory state,
         uint256 maxIterations
-    ) internal pure returns (uint256[] memory finalBalances, uint256 iterations) {
+    ) internal pure returns (uint256[] memory finalValues, uint256 iterations) {
         // Work on a copy so we don't mutate the input
         uint256 n = state.n;
-        uint256[] memory currentBalances = new uint256[](n);
+        uint256[] memory currentValues = new uint256[](n);
         for (uint256 i; i < n;) {
-            currentBalances[i] = state.balances[i];
+            currentValues[i] = state.values[i];
             unchecked { ++i; }
         }
 
         for (iterations = 0; iterations < maxIterations;) {
-            state.balances = currentBalances;
-            (uint256[] memory newBalances, bool changed) = iterateOnce(state);
+            state.values = currentValues;
+            (uint256[] memory newValues, bool changed) = iterateOnce(state);
 
             unchecked { ++iterations; }
 
             if (!changed) {
-                finalBalances = newBalances;
-                return (finalBalances, iterations);
+                finalValues = newValues;
+                return (finalValues, iterations);
             }
 
-            currentBalances = newBalances;
+            currentValues = newValues;
         }
 
         // Hit max iterations — return last computed state
-        finalBalances = currentBalances;
+        finalValues = currentValues;
     }
 }

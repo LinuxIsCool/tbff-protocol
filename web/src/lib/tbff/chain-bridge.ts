@@ -86,7 +86,7 @@ export interface OnChainProfile {
  */
 export function bridgeToParticipant(
   address: Address,
-  balance: bigint,
+  value: bigint,
   threshold: bigint,
   minThreshold: bigint,
   allNodes: Address[],
@@ -117,7 +117,7 @@ export function bridgeToParticipant(
     name: meta.name,
     emoji: meta.emoji,
     role: meta.role,
-    balance: wadToUsd(balance),
+    value: wadToUsd(value),
     minThreshold: wadToUsd(minThreshold),
     maxThreshold: wadToUsd(threshold),
     allocations,
@@ -130,7 +130,7 @@ export function bridgeToParticipant(
  */
 export function profileToParticipant(
   profile: OnChainProfile,
-  balance: bigint,
+  value: bigint,
   threshold: bigint,
   minThreshold: bigint,
 ): Participant {
@@ -147,7 +147,7 @@ export function profileToParticipant(
     name,
     emoji,
     role,
-    balance: wadToUsd(balance),
+    value: wadToUsd(value),
     minThreshold: wadToUsd(minThreshold),
     maxThreshold: wadToUsd(threshold),
     allocations: [],

@@ -20,14 +20,13 @@ contract TBFFNetwork {
     ISuperToken public token;
     ICFAv1Forwarder public forwarder;
     address public owner;
-    uint256 public streamEpoch; // seconds over which overflow is streamed (default 30 days)
 
     address[] public nodes;
     mapping(address => uint256) public nodeIndex;
     mapping(address => bool) public isNode;
 
     uint256[] public thresholds;    // WAD, max threshold parallel to nodes[]
-    uint256[] public minThresholds;  // WAD, min threshold parallel to nodes[]. Overflow gated if balance < minThreshold.
+    uint256[] public minThresholds;  // WAD, min threshold parallel to nodes[]. Overflow gated if value < minThreshold.
 
     // CSR format for allocation graph (mirrors TBFFMath.NetworkState)
     uint256[] internal _allocOffsets;  // length n+1
@@ -49,6 +48,16 @@ contract TBFFNetwork {
     }
     mapping(address => Profile) public profiles;
     mapping(address => uint256) public cumulativeOverflow; // WAD lifetime total overflow routed through node
+
+    // ─── Phase 4 Storage ────────────────────────────────────────
+    // TBFF-managed stream rates: tracks what settle() has set so we can
+    // distinguish TBFF streams from external income when computing input values.
+    // node => target => flowrate (WAD/second) set by last settle()
+    mapping(address => mapping(address => int96)) public tbffStreamRates;
+    // node => total outbound rate from TBFF streams (sum of all tbffStreamRates[node][*])
+    mapping(address => int96) public tbffOutboundRate;
+    // node => total inbound rate from TBFF streams (sum of all tbffStreamRates[*][node])
+    mapping(address => int96) public tbffInboundRate;
 
     uint256 public constant MIN_THRESHOLD = 1_000 * 1e18;      // $1K floor for maxThreshold
     uint256 public constant MAX_THRESHOLD = 50_000 * 1e18;     // $50K ceiling for maxThreshold
@@ -98,13 +107,11 @@ contract TBFFNetwork {
 
     constructor(
         address _forwarder,
-        address _token,
-        uint256 _streamEpoch
+        address _token
     ) {
         owner = msg.sender;
         forwarder = ICFAv1Forwarder(_forwarder);
         token = ISuperToken(_token);
-        streamEpoch = _streamEpoch;
 
         // Initialize CSR with empty offset array (0 nodes → [0])
         _allocOffsets.push(0);
@@ -133,6 +140,9 @@ contract TBFFNetwork {
 
         uint256 idx = nodeIndex[node];
         uint256 lastIdx = nodes.length - 1;
+
+        // Clean up Phase 4 TBFF stream accounting for the removed node
+        _clearTBFFAccounting(node);
 
         if (idx != lastIdx) {
             // Swap with last
@@ -178,10 +188,6 @@ contract TBFFNetwork {
         _rebuildCSR(fromIdx, targetIndices, weights);
 
         emit AllocationsSet(fromNode);
-    }
-
-    function setStreamEpoch(uint256 epochSeconds) external onlyOwner {
-        streamEpoch = epochSeconds;
     }
 
     function fundReserve(uint256 amount) external {
@@ -295,29 +301,29 @@ contract TBFFNetwork {
         uint256 n = nodes.length;
         if (n == 0) return;
 
-        // 1. Read on-chain balances
-        uint256[] memory balances = _balancesFromChain();
+        // 1. Read external income rates (flow-based input)
+        uint256[] memory values = _valuesFromChain();
 
         // 2. Build NetworkState
-        TBFFMath.NetworkState memory state = _loadNetworkState(balances);
+        TBFFMath.NetworkState memory state = _loadNetworkState(values);
 
         // 3. Run convergence
-        (uint256[] memory finalBalances, uint256 iterations) = TBFFMath.converge(state, 20);
+        (uint256[] memory finalValues, uint256 iterations) = TBFFMath.converge(state, 20);
 
         // 4. Compute total redistributed
         uint256 totalRedist;
         for (uint256 i; i < n;) {
-            if (finalBalances[i] > balances[i]) {
-                totalRedist += finalBalances[i] - balances[i];
+            if (finalValues[i] > values[i]) {
+                totalRedist += finalValues[i] - values[i];
             }
             unchecked { ++i; }
         }
 
         bool converged = iterations < 20 ||
-            _balancesEqual(finalBalances, state.balances);
+            _valuesEqual(finalValues, state.values);
 
         // 5. Apply redistribution via streams
-        _applyRedistribution(balances, finalBalances);
+        _applyRedistribution(values, finalValues);
 
         // 6. Record metadata
         lastSettleTimestamp = block.timestamp;
@@ -335,8 +341,8 @@ contract TBFFNetwork {
         view
         returns (address[] memory, uint256[] memory, uint256[] memory, uint256[] memory)
     {
-        uint256[] memory balances = _balancesFromChain();
-        return (nodes, balances, thresholds, minThresholds);
+        uint256[] memory values = _valuesFromChain();
+        return (nodes, values, thresholds, minThresholds);
     }
 
     function getActiveStreams()
@@ -439,17 +445,31 @@ contract TBFFNetwork {
 
     // ─── Internal ────────────────────────────────────────────────
 
-    function _balancesFromChain() internal view returns (uint256[] memory balances) {
+    /// @notice Compute a node's external income rate by removing TBFF's own streams.
+    /// @dev externalIncome = netFlowRate + tbffOutbound - tbffInbound
+    ///      This eliminates the feedback loop where settle() reads rates it just set.
+    function _externalIncomeRate(address node) internal view returns (int96) {
+        (, int96 netRate,,) = forwarder.getAccountFlowInfo(address(token), node);
+        return netRate + tbffOutboundRate[node] - tbffInboundRate[node];
+    }
+
+    /// @notice Build the convergence input: external income rates per node.
+    /// @dev In flow mode, values are rates (WAD/second), not balances.
+    ///      Negative external rates are clamped to zero. This is load-bearing:
+    ///      if TBFF accounting drifts (e.g. stream ops revert mid-settle), a node
+    ///      could show falsely-negative external income. Clamping prevents cascading
+    ///      stream deletions from a transient accounting desync.
+    function _valuesFromChain() internal view returns (uint256[] memory values) {
         uint256 n = nodes.length;
-        balances = new uint256[](n);
+        values = new uint256[](n);
         for (uint256 i; i < n;) {
-            (int256 availableBalance,,,) = token.realtimeBalanceOfNow(nodes[i]);
-            balances[i] = availableBalance > 0 ? uint256(availableBalance) : 0;
+            int96 rate = _externalIncomeRate(nodes[i]);
+            values[i] = rate > 0 ? uint256(int256(rate)) : 0;
             unchecked { ++i; }
         }
     }
 
-    function _loadNetworkState(uint256[] memory balances)
+    function _loadNetworkState(uint256[] memory values)
         internal
         view
         returns (TBFFMath.NetworkState memory)
@@ -481,7 +501,7 @@ contract TBFFNetwork {
 
         return TBFFMath.NetworkState({
             n: n,
-            balances: balances,
+            values: values,
             thresholds: thresh,
             allocTargets: targets,
             allocWeights: weights,
@@ -489,14 +509,35 @@ contract TBFFNetwork {
         });
     }
 
-    function _applyRedistribution(uint256[] memory currentBalances, uint256[] memory /* finalBalances */) internal {
+    /// @notice Apply redistribution as Superfluid streams.
+    /// @dev Phase 4 design: single-pass overflow. Each node streams its own raw overflow
+    ///      to allocation targets. `finalValues` from converge() is intentionally unused —
+    ///      multi-hop converged rates are deferred to Phase 5. The convergence still runs
+    ///      in settle() to compute `lastSettleConverged` and `totalRedistributed` metrics.
+    ///
+    ///      minThreshold is a stream gate, not a convergence gate: nodes with income rate
+    ///      below minThreshold produce zero overflow regardless of maxThreshold.
+    ///      Since minThreshold <= maxThreshold is enforced at registration, this gate
+    ///      only activates when value is in the range [0, minThreshold). TBFFMath.converge()
+    ///      is unaware of minThreshold — it only sees maxThreshold. This divergence is
+    ///      intentional: minThreshold protects small nodes from being drained before they
+    ///      accumulate sufficient income.
+    ///
+    ///      int96 cast safety: overflowShare is bounded by MAX_THRESHOLD (50K WAD = 5e22),
+    ///      well within int96 max (~3.96e28). No explicit guard needed at current constants.
+    ///
+    ///      Stream clobbering: setFlowrateFrom() operates on the total rate between two
+    ///      addresses. If a user has manually created a stream on the same (from, to, token)
+    ///      triple that TBFF also manages, TBFF will overwrite it. This is a known Superfluid
+    ///      limitation — operator permissions share the flowrate namespace.
+    function _applyRedistribution(uint256[] memory currentValues, uint256[] memory /* finalValues */) internal {
         uint256 n = nodes.length;
 
         for (uint256 i; i < n;) {
-            // minThreshold gate: only compute overflow if balance >= minThreshold
+            // minThreshold gate: only compute overflow if value >= minThreshold
             uint256 overflow;
-            if (currentBalances[i] >= minThresholds[i]) {
-                overflow = TBFFMath.computeOverflow(currentBalances[i], thresholds[i]);
+            if (currentValues[i] >= minThresholds[i]) {
+                overflow = TBFFMath.computeOverflow(currentValues[i], thresholds[i]);
             }
             if (overflow > 0) {
                 cumulativeOverflow[nodes[i]] += overflow;
@@ -508,14 +549,14 @@ contract TBFFNetwork {
                 uint256 targetIdx = _allocTargets[j];
                 uint96 weight = _allocWeights[j];
 
-                // Compute target flow rate: overflow * weight / WAD / streamEpoch
+                // Flow mode: overflow IS the rate (WAD/second). No epoch division.
                 int96 targetRate;
                 if (overflow > 0) {
                     uint256 overflowShare = (overflow * uint256(weight)) / WAD;
-                    targetRate = int96(int256(overflowShare / streamEpoch));
+                    targetRate = int96(int256(overflowShare));
                 }
 
-                // Read current rate
+                // Read current on-chain rate
                 int96 currentRate = forwarder.getFlowrate(
                     address(token), nodes[i], nodes[targetIdx]
                 );
@@ -526,24 +567,29 @@ contract TBFFNetwork {
                     try forwarder.setFlowrateFrom(
                         address(token), nodes[i], nodes[targetIdx], targetRate
                     ) {
+                        _updateTBFFAccounting(nodes[i], nodes[targetIdx], 0, targetRate);
                         emit StreamCreated(nodes[i], nodes[targetIdx], targetRate);
                     } catch (bytes memory reason) {
                         emit StreamError(nodes[i], nodes[targetIdx], reason);
                     }
                 } else if (targetRate > 0 && currentRate != targetRate) {
                     // Update existing stream
+                    int96 oldTbffRate = tbffStreamRates[nodes[i]][nodes[targetIdx]];
                     try forwarder.setFlowrateFrom(
                         address(token), nodes[i], nodes[targetIdx], targetRate
                     ) {
+                        _updateTBFFAccounting(nodes[i], nodes[targetIdx], oldTbffRate, targetRate);
                         emit StreamUpdated(nodes[i], nodes[targetIdx], targetRate);
                     } catch (bytes memory reason) {
                         emit StreamError(nodes[i], nodes[targetIdx], reason);
                     }
-                } else if (targetRate == 0 && currentRate > 0) {
-                    // Delete stream
+                } else if (targetRate == 0 && tbffStreamRates[nodes[i]][nodes[targetIdx]] > 0) {
+                    // Delete TBFF-managed stream (only if TBFF previously set it)
+                    int96 oldTbffRate = tbffStreamRates[nodes[i]][nodes[targetIdx]];
                     try forwarder.setFlowrateFrom(
                         address(token), nodes[i], nodes[targetIdx], 0
                     ) {
+                        _updateTBFFAccounting(nodes[i], nodes[targetIdx], oldTbffRate, 0);
                         emit StreamDeleted(nodes[i], nodes[targetIdx]);
                     } catch (bytes memory reason) {
                         emit StreamError(nodes[i], nodes[targetIdx], reason);
@@ -557,7 +603,47 @@ contract TBFFNetwork {
         }
     }
 
-    function _balancesEqual(uint256[] memory a, uint256[] memory b) internal pure returns (bool) {
+    /// @notice Update internal TBFF stream accounting on successful stream operation.
+    /// @dev Maintains the invariant: tbffOutboundRate[x] = sum(tbffStreamRates[x][*])
+    ///      and tbffInboundRate[y] = sum(tbffStreamRates[*][y]). These are used by
+    ///      _externalIncomeRate() to strip TBFF's own streams from the net flow rate,
+    ///      preventing the feedback loop where settle() reads rates it just set.
+    ///      Called only inside try{} blocks after a successful setFlowrateFrom().
+    function _updateTBFFAccounting(address from, address to, int96 oldRate, int96 newRate) internal {
+        tbffStreamRates[from][to] = newRate;
+        tbffOutboundRate[from] = tbffOutboundRate[from] - oldRate + newRate;
+        tbffInboundRate[to] = tbffInboundRate[to] - oldRate + newRate;
+    }
+
+    /// @notice Clear all Phase 4 TBFF stream accounting for a node being removed.
+    /// @dev Iterates all other nodes to clear bidirectional stream rate entries.
+    ///      Must be called BEFORE the swap-and-pop in removeNode() so nodes[] is intact.
+    function _clearTBFFAccounting(address node) internal {
+        uint256 n = nodes.length;
+        for (uint256 i; i < n;) {
+            address other = nodes[i];
+            if (other != node) {
+                // Clear streams FROM other TO node
+                int96 rateToNode = tbffStreamRates[other][node];
+                if (rateToNode != 0) {
+                    tbffOutboundRate[other] -= rateToNode;
+                    delete tbffStreamRates[other][node];
+                }
+                // Clear streams FROM node TO other
+                int96 rateFromNode = tbffStreamRates[node][other];
+                if (rateFromNode != 0) {
+                    tbffInboundRate[other] -= rateFromNode;
+                    delete tbffStreamRates[node][other];
+                }
+            }
+            unchecked { ++i; }
+        }
+        // Clear the removed node's aggregate rates
+        delete tbffOutboundRate[node];
+        delete tbffInboundRate[node];
+    }
+
+    function _valuesEqual(uint256[] memory a, uint256[] memory b) internal pure returns (bool) {
         for (uint256 i; i < a.length;) {
             if (a[i] != b[i]) return false;
             unchecked { ++i; }

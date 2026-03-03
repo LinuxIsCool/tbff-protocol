@@ -11,7 +11,6 @@ import {TBFFNetwork} from "../../src/TBFFNetwork.sol";
 /// @dev Requires BASE_SEPOLIA_RPC_URL environment variable.
 abstract contract SuperfluidSetup is Test {
     uint256 internal constant WAD = 1e18;
-    uint256 internal constant STREAM_EPOCH = 30 days;
     uint256 internal constant THRESHOLD = 8000 * WAD;
     uint256 internal constant MIN_THRESH = 3000 * WAD;
 
@@ -59,7 +58,7 @@ abstract contract SuperfluidSetup is Test {
 
     function _deployNetwork() internal {
         vm.startPrank(deployer);
-        network = new TBFFNetwork(CFA_FORWARDER, address(tbffx), STREAM_EPOCH);
+        network = new TBFFNetwork(CFA_FORWARDER, address(tbffx));
         vm.stopPrank();
     }
 

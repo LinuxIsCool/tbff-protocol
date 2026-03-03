@@ -4,38 +4,38 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { Address } from "viem";
 import { wadToUsd } from "@/lib/tbff/chain-bridge";
 
-interface AnimatedBalancesInput {
+interface AnimatedValuesInput {
   nodes: Address[] | undefined;
-  balances: bigint[] | undefined;
+  values: bigint[] | undefined;
   flowInfo: Map<Address, { netFlowRate: bigint; lastUpdated: bigint }>;
   /** Timestamp (seconds) when balances were fetched */
   fetchTimestamp?: number;
 }
 
 /**
- * Animates on-chain balances at 60fps using flow rates.
- * balance_now = base_balance + flowRate * elapsed_seconds
+ * Animates on-chain values at 60fps using flow rates.
+ * value_now = base_value + flowRate * elapsed_seconds
  */
 export function useAnimatedBalances({
   nodes,
-  balances,
+  values,
   flowInfo,
   fetchTimestamp,
-}: AnimatedBalancesInput): Record<string, number> {
+}: AnimatedValuesInput): Record<string, number> {
   const [animated, setAnimated] = useState<Record<string, number>>({});
   const rafRef = useRef<number>(0);
-  const baseRef = useRef<{ nodes: Address[]; balances: bigint[]; fetchTime: number } | null>(null);
+  const baseRef = useRef<{ nodes: Address[]; values: bigint[]; fetchTime: number } | null>(null);
 
   // Update base values when chain data changes
   useEffect(() => {
-    if (nodes && balances && nodes.length === balances.length) {
+    if (nodes && values && nodes.length === values.length) {
       baseRef.current = {
         nodes: [...nodes],
-        balances: [...balances],
+        values: [...values],
         fetchTime: fetchTimestamp ?? Date.now() / 1000,
       };
     }
-  }, [nodes, balances, fetchTimestamp]);
+  }, [nodes, values, fetchTimestamp]);
 
   const animate = useCallback(() => {
     const base = baseRef.current;
@@ -49,7 +49,7 @@ export function useAnimatedBalances({
 
     for (let i = 0; i < base.nodes.length; i++) {
       const addr = base.nodes[i];
-      const baseUsd = wadToUsd(base.balances[i]);
+      const baseUsd = wadToUsd(base.values[i]);
       const info = flowInfo.get(addr);
 
       if (info && info.netFlowRate !== 0n) {

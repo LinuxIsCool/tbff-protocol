@@ -119,16 +119,16 @@ contract TBFFMathTest is TestSetup {
             balances, thresholds, allocTargets, allocWeights, allocOffsets
         );
 
-        (uint256[] memory finalBalances, uint256 iterations) = exposed_converge(state, 50);
+        (uint256[] memory finalValues, uint256 iterations) = exposed_converge(state, 50);
 
-        assertEq(finalBalances[0], 100e18, "A should be at threshold");
-        assertEq(finalBalances[1], 100e18, "B should be at threshold");
-        assertEq(finalBalances[2], 80e18, "C should have 80");
+        assertEq(finalValues[0], 100e18, "A should be at threshold");
+        assertEq(finalValues[1], 100e18, "B should be at threshold");
+        assertEq(finalValues[2], 80e18, "C should have 80");
         assertEq(iterations, 3, "should converge in 3 iterations");
 
         // Conservation
         assertEq(
-            sumArray(finalBalances),
+            sumArray(finalValues),
             sumArray(balances),
             "conservation of funds"
         );
@@ -161,7 +161,7 @@ contract TBFFMathTest is TestSetup {
         //     B overflow=50, sends to C: newBalances[2] += 50 → 150
         //     C overflow=50, sends to A: newBalances[0] += 50 → 150
         //   newBalances = [150, 150, 150]
-        //   changed? newBalances[i] == state.balances[i] for all i → changed=false
+        //   changed? newBalances[i] == state.values[i] for all i → changed=false
         //
         // So it "converges" in 1 iteration back to itself. Funds don't multiply.
         // sum(final) = 450 = sum(initial). Conservation holds.
@@ -197,16 +197,16 @@ contract TBFFMathTest is TestSetup {
             balances, thresholds, allocTargets, allocWeights, allocOffsets
         );
 
-        (uint256[] memory finalBalances, uint256 iterations) = exposed_converge(state, 50);
+        (uint256[] memory finalValues, uint256 iterations) = exposed_converge(state, 50);
 
         // Circular: overflow recirculates perfectly, no amplification
-        assertEq(finalBalances[0], 150e18, "A unchanged in cycle");
-        assertEq(finalBalances[1], 150e18, "B unchanged in cycle");
-        assertEq(finalBalances[2], 150e18, "C unchanged in cycle");
+        assertEq(finalValues[0], 150e18, "A unchanged in cycle");
+        assertEq(finalValues[1], 150e18, "B unchanged in cycle");
+        assertEq(finalValues[2], 150e18, "C unchanged in cycle");
         assertEq(iterations, 1, "stable cycle converges in 1 iteration");
 
         // Conservation
-        assertEq(sumArray(finalBalances), sumArray(balances), "conservation");
+        assertEq(sumArray(finalValues), sumArray(balances), "conservation");
     }
 
     // ========== Self-allocation ==========
@@ -237,10 +237,10 @@ contract TBFFMathTest is TestSetup {
             balances, thresholds, allocTargets, allocWeights, allocOffsets
         );
 
-        (uint256[] memory finalBalances, uint256 iterations) = exposed_converge(state, 50);
+        (uint256[] memory finalValues, uint256 iterations) = exposed_converge(state, 50);
 
         // Self-allocation: overflow returns to self, no amplification
-        assertEq(finalBalances[0], 200e18, "self-allocation: balance unchanged");
+        assertEq(finalValues[0], 200e18, "self-allocation: balance unchanged");
         assertEq(iterations, 1, "self-allocation converges in 1");
     }
 
@@ -278,11 +278,11 @@ contract TBFFMathTest is TestSetup {
             balances, thresholds, allocTargets, allocWeights, allocOffsets
         );
 
-        (uint256[] memory finalBalances, uint256 iterations) = exposed_converge(state, 50);
+        (uint256[] memory finalValues, uint256 iterations) = exposed_converge(state, 50);
 
-        assertEq(finalBalances[0], 50e18);
-        assertEq(finalBalances[1], 70e18);
-        assertEq(finalBalances[2], 30e18);
+        assertEq(finalValues[0], 50e18);
+        assertEq(finalValues[1], 70e18);
+        assertEq(finalValues[2], 30e18);
         assertEq(iterations, 1, "no overflow: converge in 1");
     }
 
@@ -360,9 +360,9 @@ contract TBFFMathTest is TestSetup {
 
         uint256 initialSum = sumArray(balances);
 
-        (uint256[] memory finalBalances,) = exposed_converge(state, 100);
+        (uint256[] memory finalValues,) = exposed_converge(state, 100);
 
-        uint256 finalSum = sumArray(finalBalances);
+        uint256 finalSum = sumArray(finalValues);
 
         // Conservation: tolerance of 1 wei per node (3 nodes → 3 wei)
         uint256 diff = finalSum > initialSum ? finalSum - initialSum : initialSum - finalSum;
@@ -412,11 +412,11 @@ contract TBFFMathTest is TestSetup {
             balances, thresholds, allocTargets, allocWeights, allocOffsets
         );
 
-        (uint256[] memory finalBalances,) = exposed_converge(state, 50);
+        (uint256[] memory finalValues,) = exposed_converge(state, 50);
 
         // In a DAG topology, after convergence every balance <= threshold
         for (uint256 i; i < 3;) {
-            assertLe(finalBalances[i], thresh, "balance exceeds threshold after convergence");
+            assertLe(finalValues[i], thresh, "balance exceeds threshold after convergence");
             unchecked { ++i; }
         }
     }
